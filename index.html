@@ -1,0 +1,653 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Washington Nationals 2026 Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root {
+    --red:   #C0001D;
+    --navy:  #011E62;
+    --gold:  #D4B44A;
+    --bg:    #05091a;
+    --card:  #0a1228;
+    --border:#1a2d5a;
+    --muted: #6a7da0;
+    --text:  #dde4f0;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ─────────────────────────────── */
+  header {
+    background: var(--navy);
+    border-bottom: 3px solid var(--red);
+    padding: 14px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .logo { display: flex; flex-direction: column; }
+  .logo-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: #fff;
+  }
+  .logo-title span { color: var(--red); }
+  .logo-sub { font-size: 9px; color: var(--gold); letter-spacing: 2px; margin-top: 2px; }
+
+  /* ── TABS ─────────────────────────────── */
+  .tabs { display: flex; gap: 6px; }
+  .tab-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 6px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .15s;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+  }
+  .tab-btn.active { background: var(--red); color: #fff; border-color: var(--red); }
+
+  /* ── MAIN ─────────────────────────────── */
+  main { max-width: 1000px; margin: 0 auto; padding: 18px 14px; }
+
+  /* ── CONTROLS ─────────────────────────────── */
+  .controls {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .group-toggle {
+    display: flex;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .group-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 5px 14px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: var(--muted);
+    transition: all .15s;
+  }
+  .group-btn.active { background: var(--red); color: #fff; }
+  .stat-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+  .stat-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 4px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .stat-btn.active { background: var(--navy); color: var(--gold); border-color: rgba(212,180,74,.4); }
+
+  /* ── SUMMARY CARDS ─────────────────────────────── */
+  .cards { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    flex: 1 1 110px;
+  }
+  .card-label { font-size: 9px; color: var(--muted); letter-spacing: 1.5px; text-transform: uppercase; margin-bottom: 4px; }
+  .card-value { font-family: 'Barlow Condensed', sans-serif; font-size: 30px; font-weight: 900; line-height: 1; }
+  .card-sub { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+  /* ── CHART ─────────────────────────────── */
+  .chart-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 10px 14px 4px;
+    margin-bottom: 14px;
+  }
+  .chart-label { font-size: 9px; color: var(--muted); letter-spacing: 1px; padding-left: 12px; margin-bottom: 8px; text-transform: uppercase; }
+  .chart-wrap { position: relative; }
+
+  /* ── TABLE ─────────────────────────────── */
+  .table-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .table-scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 480px; }
+  thead tr.hdr { border-bottom: 2px solid var(--red); }
+  thead tr.avg-row { border-bottom: 1px solid var(--border); background: rgba(212,180,74,0.06); }
+  th {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--muted);
+    padding: 10px 10px;
+    cursor: pointer;
+    text-align: right;
+    user-select: none;
+    transition: color .15s;
+  }
+  th:first-child { text-align: left; padding-left: 16px; cursor: default; }
+  th.sort-active { color: var(--gold); background: rgba(212,180,74,0.06); }
+  td { padding: 9px 10px; text-align: right; border-bottom: 1px solid rgba(26,45,90,.5); }
+  td:first-child { text-align: left; padding-left: 16px; }
+  tr:last-child td { border-bottom: none; }
+  tr:nth-child(even) td { background: rgba(255,255,255,0.012); }
+  .avg-row td { color: var(--gold); font-family: 'Barlow Condensed', sans-serif; font-size: 13px; font-weight: 600; }
+  .player-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .player-sub { font-size: 10px; color: var(--muted); }
+  .val-up   { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; color: #22c55e; }
+  .val-dn   { font-family: 'Barlow Condensed', sans-serif; font-size: 14px; font-weight: 700; color: #ef4444; }
+  .val-pct  { font-size: 10px; color: var(--muted); display: block; }
+  .table-footer { padding: 7px 16px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+  .table-footer .up { color: #22c55e; } .table-footer .dn { color: #ef4444; }
+
+  /* ── CONTEXT NOTE ─────────────────────────────── */
+  .note {
+    background: rgba(212,180,74,0.05);
+    border: 1px solid rgba(212,180,74,0.2);
+    border-radius: 6px;
+    padding: 9px 14px;
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.6;
+  }
+  .note strong { color: var(--gold); }
+  .note .good { color: #22c55e; }
+  .note .bad  { color: #ef4444; }
+
+  /* ── LOADING / ERROR ─────────────────────────────── */
+  .loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 300px;
+    gap: 14px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .spinner {
+    width: 36px; height: 36px;
+    border: 3px solid var(--border);
+    border-top-color: var(--red);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .error { color: #ef4444; text-align: center; padding: 40px 20px; }
+  .error h3 { margin-bottom: 8px; font-size: 18px; }
+  .hidden { display: none !important; }
+
+  @media (max-width: 600px) {
+    .logo-title { font-size: 17px; }
+    .cards { flex-direction: column; }
+    .card { flex: none; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-title">Washington <span>Nationals</span></div>
+    <div class="logo-sub">2026 Season · Live MLB Data · vs League Average</div>
+  </div>
+  <div class="tabs">
+    <button class="tab-btn active" onclick="switchTab('team')">Team Rankings</button>
+    <button class="tab-btn"        onclick="switchTab('players')">Players</button>
+  </div>
+</header>
+
+<main>
+  <!-- LOADING -->
+  <div id="loading" class="loading">
+    <div class="spinner"></div>
+    <div id="load-msg">Fetching 2026 MLB stats…</div>
+  </div>
+
+  <!-- ERROR -->
+  <div id="error-panel" class="error hidden">
+    <h3>⚠️ Could not load MLB data</h3>
+    <p id="error-msg" style="color:var(--muted);font-size:13px;margin-top:6px;"></p>
+    <button onclick="loadData()" style="margin-top:14px;padding:8px 20px;background:var(--red);color:#fff;border:none;border-radius:4px;cursor:pointer;font-size:13px;">Retry</button>
+  </div>
+
+  <!-- TEAM TAB -->
+  <div id="tab-team" class="hidden">
+    <div class="controls">
+      <div class="group-toggle">
+        <button class="group-btn active" onclick="setGroup('hitting')">Offense</button>
+        <button class="group-btn"        onclick="setGroup('pitching')">Pitching</button>
+      </div>
+      <div class="stat-btns" id="stat-buttons"></div>
+    </div>
+    <div class="cards" id="summary-cards"></div>
+    <div class="chart-box">
+      <div class="chart-label" id="chart-label"></div>
+      <div class="chart-wrap">
+        <canvas id="teamChart"></canvas>
+      </div>
+    </div>
+    <div class="note">
+      <strong>📊 Nationals context:</strong>
+      Offense ranks <span class="good">3rd in MLB in runs scored</span> (tied HOU/LAD) — fuelled by CJ Abrams (.356 through first 17 games).
+      Pitching ranks <span class="bad">29th in starter ERA, 30th in bullpen ERA</span> after trading MacKenzie Gore to Texas in January 2026.
+    </div>
+  </div>
+
+  <!-- PLAYERS TAB -->
+  <div id="tab-players" class="hidden">
+    <div class="controls">
+      <div class="group-toggle">
+        <button class="group-btn active" onclick="setPlayerGroup('batting')">Batting</button>
+        <button class="group-btn"        onclick="setPlayerGroup('pitching')">Pitching</button>
+      </div>
+    </div>
+    <div class="table-box">
+      <div class="table-scroll">
+        <table id="player-table">
+          <thead></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span class="up">▲ Green</span> = above league avg &nbsp;·&nbsp;
+        <span class="dn">▼ Red</span> = below &nbsp;·&nbsp; Tap column headers to sort &nbsp;·&nbsp; Min. 20 PA / 5 IP — includes IL players
+      </div>
+    </div>
+  </div>
+</main>
+
+<script>
+// ─── TEAM ID → ABBREVIATION LOOKUP ───────────────────────────────────────────
+const TEAM_ABB = {
+  108:'LAA', 109:'ARI', 110:'BAL', 111:'BOS', 112:'CHC', 113:'CIN',
+  114:'CLE', 115:'COL', 116:'DET', 117:'HOU', 118:'KC',  119:'LAD',
+  120:'WSH', 121:'NYM', 133:'ATH', 134:'PIT', 135:'SD',  136:'SEA',
+  137:'SF',  138:'STL', 139:'TB',  140:'TEX', 141:'TOR', 142:'MIN',
+  143:'PHI', 144:'ATL', 145:'CWS', 146:'MIA', 147:'NYY', 158:'MIL'
+};
+function teamAbb(id) { return TEAM_ABB[id] || '???'; }
+
+// ─── CONFIG ──────────────────────────────────────────────────────────────────
+const NATS_ID = 120;
+const SEASON  = 2026;
+const BASE    = 'https://statsapi.mlb.com/api/v1';
+
+// Round to 1 decimal for averages, integer for whole numbers
+const fmtCount = v => Number.isInteger(+v) ? (+v) : (+v).toFixed(1);
+
+const HIT_STATS = [
+  {key:'ops',         label:'OPS',  higher:true,  fmt:v=>(+v).toFixed(3), desc:'OPS'},
+  {key:'avg',         label:'AVG',  higher:true,  fmt:v=>(+v).toFixed(3), desc:'Batting Average'},
+  {key:'obp',         label:'OBP',  higher:true,  fmt:v=>(+v).toFixed(3), desc:'On-Base %'},
+  {key:'slg',         label:'SLG',  higher:true,  fmt:v=>(+v).toFixed(3), desc:'Slugging %'},
+  {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount,           desc:'Home Runs'},
+  {key:'runs',        label:'R',    higher:true,  fmt:fmtCount,           desc:'Runs Scored'},
+  {key:'rbi',         label:'RBI',  higher:true,  fmt:fmtCount,           desc:'RBI'},
+  {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           desc:'Stolen Bases'},
+];
+const PITCH_STATS = [
+  {key:'era',               label:'ERA',  higher:false, fmt:v=>(+v).toFixed(2), desc:'ERA'},
+  {key:'whip',              label:'WHIP', higher:false, fmt:v=>(+v).toFixed(2), desc:'WHIP'},
+  {key:'strikeoutsPer9Inn', label:'K/9',  higher:true,  fmt:v=>(+v).toFixed(1), desc:'K per 9'},
+  {key:'walksPer9Inn',      label:'BB/9', higher:false, fmt:v=>(+v).toFixed(1), desc:'BB per 9'},
+  {key:'strikeOuts',        label:'K',    higher:true,  fmt:fmtCount,           desc:'Strikeouts'},
+  {key:'saves',             label:'SV',   higher:true,  fmt:fmtCount,           desc:'Saves'},
+];
+
+const PLAYER_HIT_STATS = [
+  {key:'avg',         label:'AVG',  higher:true,  fmt:v=>(+v).toFixed(3)},
+  {key:'obp',         label:'OBP',  higher:true,  fmt:v=>(+v).toFixed(3)},
+  {key:'slg',         label:'SLG',  higher:true,  fmt:v=>(+v).toFixed(3)},
+  {key:'ops',         label:'OPS',  higher:true,  fmt:v=>(+v).toFixed(3)},
+  {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount},
+  {key:'rbi',         label:'RBI',  higher:true,  fmt:fmtCount},
+  {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount},
+];
+const PLAYER_PITCH_STATS = [
+  {key:'era',               label:'ERA',  higher:false, fmt:v=>(+v).toFixed(2)},
+  {key:'whip',              label:'WHIP', higher:false, fmt:v=>(+v).toFixed(2)},
+  {key:'strikeoutsPer9Inn', label:'K/9',  higher:true,  fmt:v=>(+v).toFixed(1)},
+  {key:'walksPer9Inn',      label:'BB/9', higher:false, fmt:v=>(+v).toFixed(1)},
+  {key:'strikeOuts',        label:'K',    higher:true,  fmt:fmtCount},
+  {key:'saves',             label:'SV',   higher:true,  fmt:fmtCount},
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let state = {
+  teamHit:[], teamPitch:[],
+  natsHitters:[], natsPitchers:[],
+  group:'hitting', stat:'ops',
+  playerGroup:'batting', playerSort:'ops', playerSortDir:1,
+  chart:null, tab:'team'
+};
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function mean(arr) {
+  const v = arr.map(x=>parseFloat(x)).filter(x=>!isNaN(x)&&x>0);
+  return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 0;
+}
+function leagueAvg(data, key) { return mean(data.map(t=>t.stat?.[key])); }
+function el(id) { return document.getElementById(id); }
+function show(id) { el(id).classList.remove('hidden'); }
+function hide(id) { el(id).classList.add('hidden'); }
+
+// ─── FETCH ───────────────────────────────────────────────────────────────────
+async function mlb(path) {
+  const r = await fetch(BASE + path);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+async function loadData() {
+  hide('tab-team'); hide('tab-players'); hide('error-panel'); show('loading');
+  const msgs = ['Fetching team batting stats…','Fetching pitching stats…','Fetching Nationals player stats…','Building dashboard…'];
+  let mi = 0;
+  const ticker = setInterval(()=>{ el('load-msg').textContent = msgs[Math.min(++mi,msgs.length-1)]; }, 1800);
+  try {
+    const [th, tp, nh, np] = await Promise.all([
+      mlb(`/teams/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
+      mlb(`/teams/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
+      mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&limit=100`),
+      mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&limit=100`),
+    ]);
+
+    state.teamHit   = th.stats?.[0]?.splits || [];
+    state.teamPitch = tp.stats?.[0]?.splits || [];
+
+    // Min 50 PA for batters, 10 IP for pitchers — catches regulars + IL players
+    // who played before getting hurt, excludes pure pinch/mop-up appearances
+    console.log('All Nationals hitters from API:', (nh.stats?.[0]?.splits || []).map(s=>s.player?.fullName+' PA:'+s.stat?.plateAppearances));
+    state.natsHitters  = (nh.stats?.[0]?.splits || [])
+      .filter(s => (s.stat?.plateAppearances || 0) >= 20);
+    state.natsPitchers = (np.stats?.[0]?.splits || [])
+      .filter(s => parseFloat(s.stat?.inningsPitched || '0') >= 5);
+
+    clearInterval(ticker);
+    hide('loading');
+    render();
+    switchTab('team');
+  } catch(e) {
+    clearInterval(ticker);
+    hide('loading'); show('error-panel');
+    el('error-msg').textContent = e.message + ' — Check your internet connection and try again.';
+  }
+}
+
+// ─── RENDER ───────────────────────────────────────────────────────────────────
+function render() {
+  renderStatButtons();
+  renderTeamView();
+  renderPlayerTable();
+}
+
+function renderStatButtons() {
+  const stats = state.group === 'hitting' ? HIT_STATS : PITCH_STATS;
+  el('stat-buttons').innerHTML = stats.map(s =>
+    `<button class="stat-btn ${s.key===state.stat?'active':''}"
+       onclick="setStat('${s.key}')" title="${s.desc}">${s.label}</button>`
+  ).join('');
+}
+
+function renderTeamView() {
+  const data   = state.group === 'hitting' ? state.teamHit : state.teamPitch;
+  const stats  = state.group === 'hitting' ? HIT_STATS : PITCH_STATS;
+  const cfg    = stats.find(s=>s.key===state.stat);
+  const avg    = leagueAvg(data, state.stat);
+  const natsRow = data.find(t=>t.team?.id===NATS_ID);
+  const natsVal = natsRow ? parseFloat(natsRow.stat?.[state.stat]) : null;
+
+  // sort
+  const sorted = [...data]
+    .map(t=>({abbr:teamAbb(t.team?.id), name:t.team?.name||'', val:parseFloat(t.stat?.[state.stat])||0, isNats:t.team?.id===NATS_ID}))
+    .filter(t=>t.val>0)
+    .sort((a,b)=>cfg?.higher ? b.val-a.val : a.val-b.val);
+
+  const natsRank = sorted.findIndex(t=>t.isNats)+1;
+
+  // summary cards
+  const rankColor = natsRank<=10?'#22c55e':natsRank<=20?'#D4B44A':'#ef4444';
+  el('summary-cards').innerHTML = [
+    {label:'LEAGUE RANK', val:`#${natsRank||'—'}`, sub:`of ${sorted.length} teams · ${cfg?.desc}`, color:rankColor},
+    {label:'NATIONALS',   val:natsVal!=null?cfg?.fmt(natsVal):'—',  sub:'2026 season to date', color:'#fff'},
+    {label:'LEAGUE AVG',  val:avg?cfg?.fmt(avg):'—',               sub:'30-team mean',         color:'#D4B44A'},
+  ].map(c=>`
+    <div class="card">
+      <div class="card-label">${c.label}</div>
+      <div class="card-value" style="color:${c.color}">${c.val}</div>
+      <div class="card-sub">${c.sub}</div>
+    </div>`).join('');
+
+  // chart
+  el('chart-label').textContent = `ALL TEAMS — ${cfg?.desc?.toUpperCase()} · Gold line = league avg`;
+  renderChart(sorted, avg, cfg);
+}
+
+function renderChart(sorted, avg, cfg) {
+  const canvas = el('teamChart');
+  canvas.height = Math.max(sorted.length * 22, 400);
+  if (state.chart) { state.chart.destroy(); state.chart = null; }
+
+  state.chart = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels: sorted.map(t=>t.abbr),
+      datasets: [{
+        data: sorted.map(t=>t.val),
+        backgroundColor: sorted.map(t=>t.isNats ? '#C0001D' : 'rgba(26,51,110,0.7)'),
+        borderColor:     sorted.map(t=>t.isNats ? '#ff3355' : 'transparent'),
+        borderWidth:     sorted.map(t=>t.isNats ? 1.5 : 0),
+        borderRadius: 3,
+        barThickness: 15,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: ctx => sorted[ctx[0].dataIndex]?.name || '',
+            label: ctx => ' ' + cfg?.fmt(ctx.raw),
+          },
+          backgroundColor: '#0d1830',
+          borderColor: '#1a2d5a',
+          borderWidth: 1,
+          titleColor: '#dde4f0',
+          bodyColor: '#dde4f0',
+        },
+        annotation: {
+          annotations: {
+            avgLine: {
+              type: 'line',
+              scaleID: 'x',
+              value: avg,
+              borderColor: '#D4B44A',
+              borderWidth: 1.5,
+              borderDash: [4, 3],
+            }
+          }
+        }
+      },
+      scales: {
+        x: {
+          ticks: { color: '#6a7da0', font:{size:10} },
+          grid:  { color: 'rgba(26,45,90,0.5)' },
+        },
+        y: {
+          ticks: {
+            color: ctx => sorted[ctx.index]?.isNats ? '#C0001D' : '#6a7da0',
+            font:  ctx => ({size: sorted[ctx.index]?.isNats ? 12 : 10, weight: sorted[ctx.index]?.isNats ? '700':'400'}),
+          },
+          grid: { color: 'rgba(26,45,90,0.3)' },
+        }
+      }
+    }
+  });
+
+  // manual avg line (annotation plugin not always available on CDN)
+  // draw it via afterDraw plugin instead
+  Chart.register({
+    id: 'avgLine',
+    afterDraw(chart) {
+      if (chart !== state.chart) return;
+      const {ctx, scales:{x, y}} = chart;
+      if (!x || !y) return;
+      const xPos = x.getPixelForValue(avg);
+      if (isNaN(xPos)) return;
+      ctx.save();
+      ctx.strokeStyle = '#D4B44A';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([4,3]);
+      ctx.beginPath();
+      ctx.moveTo(xPos, y.top);
+      ctx.lineTo(xPos, y.bottom);
+      ctx.stroke();
+      ctx.restore();
+    }
+  });
+  state.chart.update();
+}
+
+// ─── PLAYER TABLE ─────────────────────────────────────────────────────────────
+function renderPlayerTable() {
+  const isBatting = state.playerGroup === 'batting';
+  const players   = isBatting ? state.natsHitters   : state.natsPitchers;
+  const stats     = isBatting ? PLAYER_HIT_STATS    : PLAYER_PITCH_STATS;
+  const teamData  = isBatting ? state.teamHit        : state.teamPitch;
+
+  // league averages from team data
+  const avgs = {};
+  stats.forEach(s=>{ avgs[s.key] = leagueAvg(teamData, s.key); });
+
+  // sort players
+  const sortKey = state.playerSort;
+  const sortCfg = stats.find(s=>s.key===sortKey) || stats[0];
+  const sorted  = [...players].sort((a,b)=>{
+    const av = parseFloat(a.stat?.[sortKey])||0;
+    const bv = parseFloat(b.stat?.[sortKey])||0;
+    return state.playerSortDir * (sortCfg?.higher ? bv-av : av-bv);
+  });
+
+  const sub = p => isBatting
+    ? `${p.stat?.plateAppearances||0} PA`
+    : `${p.stat?.inningsPitched||0} IP`;
+
+  const pill = (raw, avg, higher, fmt) => {
+    const n = parseFloat(raw);
+    if (isNaN(n)||n===0) return '<span style="color:var(--muted)">—</span>';
+    const better = higher ? n>=avg : n<=avg;
+    const diff   = avg>0 ? Math.abs(((n-avg)/avg)*100).toFixed(1) : '0.0';
+    return `<span class="${better?'val-up':'val-dn'}">${fmt(n)}<span class="val-pct">${better?'▲':'▼'} ${diff}%</span></span>`;
+  };
+
+  const thead = document.querySelector('#player-table thead');
+  const tbody = document.querySelector('#player-table tbody');
+
+  thead.innerHTML = `
+    <tr class="hdr">
+      <th>PLAYER</th>
+      ${stats.map(s=>`<th class="${s.key===state.playerSort?'sort-active':''}" onclick="sortPlayers('${s.key}')">${s.label}${s.key===state.playerSort?(sortCfg?.higher?' ▼':' ▲'):''}</th>`).join('')}
+    </tr>
+    <tr class="avg-row">
+      <td>League Avg</td>
+      ${stats.map(s=>`<td>${avgs[s.key]?s.fmt(avgs[s.key]):'—'}</td>`).join('')}
+    </tr>`;
+
+  tbody.innerHTML = sorted.map(p=>`
+    <tr>
+      <td>
+        <div class="player-name">${p.player?.fullName||'—'}</div>
+        <div class="player-sub">${sub(p)}</div>
+      </td>
+      ${stats.map(s=>`<td>${pill(p.stat?.[s.key], avgs[s.key], s.higher, s.fmt)}</td>`).join('')}
+    </tr>`).join('') || `<tr><td colspan="${stats.length+1}" style="text-align:center;padding:30px;color:var(--muted)">No qualified players</td></tr>`;
+}
+
+// ─── INTERACTION ──────────────────────────────────────────────────────────────
+function switchTab(t) {
+  state.tab = t;
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===(t==='team'?0:1)));
+  hide('tab-team'); hide('tab-players');
+  show('tab-' + t);
+}
+
+function setGroup(g) {
+  state.group = g;
+  state.stat  = g==='hitting' ? 'ops' : 'era';
+  document.querySelectorAll('.group-btn').forEach((b,i)=>b.classList.toggle('active',i===(g==='hitting'?0:1)));
+  renderStatButtons();
+  renderTeamView();
+}
+
+function setStat(s) {
+  state.stat = s;
+  renderStatButtons();
+  renderTeamView();
+}
+
+function setPlayerGroup(g) {
+  state.playerGroup = g;
+  state.playerSort  = g==='batting' ? 'ops' : 'era';
+  state.playerSortDir = 1;
+  document.querySelectorAll('.group-btn').forEach((b,i)=>b.classList.toggle('active',i===(g==='batting'?0:1)));
+  renderPlayerTable();
+}
+
+function sortPlayers(key) {
+  if (state.playerSort === key) {
+    state.playerSortDir *= -1;
+  } else {
+    state.playerSort = key;
+    state.playerSortDir = 1;
+  }
+  renderPlayerTable();
+}
+
+// ─── BOOT ────────────────────────────────────────────────────────────────────
+loadData();
+</script>
+</body>
+</html>

@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -388,8 +389,8 @@ async function loadData() {
     const [th, tp, nh, np] = await Promise.all([
       mlb(`/teams/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/teams/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
-      mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&limit=100`),
-      mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&limit=100`),
+      mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
+      mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
     ]);
 
     state.teamHit   = th.stats?.[0]?.splits || [];

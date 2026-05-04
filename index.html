@@ -52,6 +52,34 @@
   .logo-title span { color: var(--red); }
   .logo-sub { font-size: 9px; color: var(--gold); letter-spacing: 2px; margin-top: 2px; }
 
+  /* ── HEADER RIGHT GROUP ─────────────────────────────── */
+  .header-right { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+
+  /* ── WINDOW TOGGLE ─────────────────────────────── */
+  .win-toggle {
+    display: flex;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px;
+    gap: 2px;
+  }
+  .win-btn {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    background: transparent;
+    color: var(--muted);
+    transition: all .15s;
+  }
+  .win-btn.active { background: var(--gold); color: var(--navy); }
+  .win-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
   /* ── TABS ─────────────────────────────── */
   .tabs { display: flex; gap: 6px; }
   .tab-btn {
@@ -219,10 +247,11 @@
   .hidden { display: none !important; }
 
   @media (max-width: 480px) {
-    /* header stacks: logo on top, tabs full-width below */
+    /* header stacks: logo on top, controls full-width below */
     header { padding: 10px 14px; gap: 6px; }
     .logo-title { font-size: 17px; letter-spacing: 2px; }
-    .tabs { width: 100%; }
+    .header-right { width: 100%; justify-content: space-between; }
+    .tabs { flex: 1; }
     .tab-btn { flex: 1; text-align: center; padding: 7px 6px; font-size: 12px; }
 
     main { padding: 12px 10px; }
@@ -257,9 +286,15 @@
     <div class="logo-title">Washington <span>Nationals</span></div>
     <div class="logo-sub">2026 Season · Live MLB Data · vs League Average</div>
   </div>
-  <div class="tabs">
-    <button class="tab-btn active" onclick="switchTab('team')">Team Rankings</button>
-    <button class="tab-btn"        onclick="switchTab('players')">Players</button>
+  <div class="header-right">
+    <div class="win-toggle">
+      <button class="win-btn active" onclick="setWindow('season')">Season</button>
+      <button class="win-btn"        onclick="setWindow('last7')">Last 7</button>
+    </div>
+    <div class="tabs">
+      <button class="tab-btn active" onclick="switchTab('team')">Team Rankings</button>
+      <button class="tab-btn"        onclick="switchTab('players')">Players</button>
+    </div>
   </div>
 </header>
 
@@ -293,7 +328,7 @@
         <canvas id="teamChart"></canvas>
       </div>
     </div>
-    <div class="note">
+    <div class="note" id="context-note">
       <strong>📊 Nationals context:</strong>
       Offense ranks <span class="good">3rd in MLB in runs scored</span> (tied HOU/LAD) — fuelled by CJ Abrams (.356 through first 17 games).
       Pitching ranks <span class="bad">29th in starter ERA, 30th in bullpen ERA</span> after trading MacKenzie Gore to Texas in January 2026.
@@ -366,23 +401,27 @@ const PLAYER_HIT_STATS = [
   {key:'obp',         label:'OBP',  higher:true,  fmt:v=>(+v).toFixed(3), mobileHide:true},
   {key:'slg',         label:'SLG',  higher:true,  fmt:v=>(+v).toFixed(3), mobileHide:true},
   {key:'ops',         label:'OPS',  higher:true,  fmt:v=>(+v).toFixed(3)},
-  {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount},
-  {key:'rbi',         label:'RBI',  higher:true,  fmt:fmtCount,           mobileHide:true},
-  {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           mobileHide:true},
+  {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount,           countStat:true},
+  {key:'rbi',         label:'RBI',  higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
+  {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
 ];
 const PLAYER_PITCH_STATS = [
   {key:'era',               label:'ERA',  higher:false, fmt:v=>(+v).toFixed(2)},
   {key:'whip',              label:'WHIP', higher:false, fmt:v=>(+v).toFixed(2)},
   {key:'strikeoutsPer9Inn', label:'K/9',  higher:true,  fmt:v=>(+v).toFixed(1), mobileHide:true},
   {key:'walksPer9Inn',      label:'BB/9', higher:false, fmt:v=>(+v).toFixed(1), mobileHide:true},
-  {key:'strikeOuts',        label:'K',    higher:true,  fmt:fmtCount},
-  {key:'saves',             label:'SV',   higher:true,  fmt:fmtCount,           mobileHide:true},
+  {key:'strikeOuts',        label:'K',    higher:true,  fmt:fmtCount,           countStat:true},
+  {key:'saves',             label:'SV',   higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
 ];
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let state = {
   teamHit:[], teamPitch:[],
   natsHitters:[], natsPitchers:[],
+  schedDates: [],
+  window: 'season',
+  seasonData: null,   // snapshot of full-season data
+  last7Data:  null,   // cached last-7 data, null until first fetch
   group:'hitting', stat:'ops',
   playerGroup:'batting', playerSort:'ops', playerSortDir:1,
   chart:null, tab:'team'
@@ -407,27 +446,36 @@ async function mlb(path) {
 
 async function loadData() {
   hide('tab-team'); hide('tab-players'); hide('error-panel'); show('loading');
+  state.window = 'season'; state.last7Data = null;
+  document.querySelectorAll('.win-btn').forEach((b,i)=>{ b.classList.toggle('active',i===0); b.disabled=false; });
+
   const msgs = ['Fetching team batting stats…','Fetching pitching stats…','Fetching Nationals player stats…','Building dashboard…'];
   let mi = 0;
   const ticker = setInterval(()=>{ el('load-msg').textContent = msgs[Math.min(++mi,msgs.length-1)]; }, 1800);
   try {
-    const [th, tp, nh, np] = await Promise.all([
+    const [th, tp, nh, np, sched] = await Promise.all([
       mlb(`/teams/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/teams/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
       mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
+      mlb(`/schedule?teamId=${NATS_ID}&season=${SEASON}&gameType=R&sportId=1`),
     ]);
 
-    state.teamHit   = th.stats?.[0]?.splits || [];
-    state.teamPitch = tp.stats?.[0]?.splits || [];
+    // extract sorted list of dates where a final game was played
+    const dateSet = new Set();
+    for (const d of sched.dates || [])
+      for (const g of d.games || [])
+        if (g.status?.abstractGameState === 'Final') dateSet.add(d.date);
+    state.schedDates = [...dateSet].sort();
+    document.querySelector('.win-btn:last-child').disabled = state.schedDates.length < 7;
 
-    // Min 50 PA for batters, 10 IP for pitchers — catches regulars + IL players
-    // who played before getting hurt, excludes pure pinch/mop-up appearances
-    console.log('All Nationals hitters from API:', (nh.stats?.[0]?.splits || []).map(s=>s.player?.fullName+' PA:'+s.stat?.plateAppearances));
-    state.natsHitters  = (nh.stats?.[0]?.splits || [])
-      .filter(s => (s.stat?.plateAppearances || 0) >= 20);
-    state.natsPitchers = (np.stats?.[0]?.splits || [])
-      .filter(s => parseFloat(s.stat?.inningsPitched || '0') >= 5);
+    state.teamHit  = th.stats?.[0]?.splits || [];
+    state.teamPitch = tp.stats?.[0]?.splits || [];
+    state.natsHitters  = (nh.stats?.[0]?.splits || []).filter(s => (s.stat?.plateAppearances || 0) >= 20);
+    state.natsPitchers = (np.stats?.[0]?.splits || []).filter(s => parseFloat(s.stat?.inningsPitched || '0') >= 5);
+
+    state.seasonData = { teamHit: state.teamHit, teamPitch: state.teamPitch,
+                         hitters: state.natsHitters, pitchers: state.natsPitchers };
 
     clearInterval(ticker);
     hide('loading');
@@ -445,6 +493,7 @@ function render() {
   renderStatButtons();
   renderTeamView();
   renderPlayerTable();
+  renderNote();
 }
 
 function renderStatButtons() {
@@ -564,9 +613,14 @@ function renderPlayerTable() {
   const stats     = isBatting ? PLAYER_HIT_STATS    : PLAYER_PITCH_STATS;
   const teamData  = isBatting ? state.teamHit        : state.teamPitch;
 
-  // league averages from team data
+  // rate stats: average the team-level rate (valid — team rate = player-level rate)
+  // count stats: average across the player pool (team totals would dwarf any individual)
   const avgs = {};
-  stats.forEach(s=>{ avgs[s.key] = leagueAvg(teamData, s.key); });
+  stats.forEach(s=>{
+    avgs[s.key] = s.countStat
+      ? mean(players.map(p => p.stat?.[s.key]))
+      : leagueAvg(teamData, s.key);
+  });
 
   // sort players
   const sortKey = state.playerSort;
@@ -650,6 +704,127 @@ function sortPlayers(key) {
     state.playerSortDir = 1;
   }
   renderPlayerTable();
+}
+
+// ─── WINDOW TOGGLE ───────────────────────────────────────────────────────────
+function renderNote() {
+  const note = el('context-note');
+  if (!note) return;
+  if (state.window === 'last7') {
+    const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
+    const start = state.schedDates[state.schedDates.length - 7];
+    const end   = state.schedDates[state.schedDates.length - 1];
+    note.innerHTML = `<strong>📅 Last 7 appearances</strong> (team window: ${fmt(start)} – ${fmt(end)}) · Team rankings use the same date range. Player stats are each player's last 7 individual appearances — benched games don't count.`;
+  } else {
+    note.innerHTML = `<strong>📊 Nationals context:</strong> Offense ranks <span class="good">3rd in MLB in runs scored</span> (tied HOU/LAD) — fuelled by CJ Abrams (.356 through first 17 games). Pitching ranks <span class="bad">29th in starter ERA, 30th in bullpen ERA</span> after trading MacKenzie Gore to Texas in January 2026.`;
+  }
+}
+
+function setWindow(w) {
+  if (state.window === w) return;
+  state.window = w;
+  document.querySelectorAll('.win-btn').forEach((b,i)=>b.classList.toggle('active',i===(w==='season'?0:1)));
+  if (w === 'last7') {
+    if (state.last7Data) {
+      state.teamHit = state.last7Data.teamHit; state.teamPitch = state.last7Data.teamPitch;
+      state.natsHitters = state.last7Data.hitters; state.natsPitchers = state.last7Data.pitchers;
+      render(); switchTab(state.tab);
+    } else {
+      loadLast7();
+    }
+  } else {
+    state.teamHit = state.seasonData.teamHit; state.teamPitch = state.seasonData.teamPitch;
+    state.natsHitters = state.seasonData.hitters; state.natsPitchers = state.seasonData.pitchers;
+    render(); switchTab(state.tab);
+  }
+}
+
+function aggregateBatting(entries) {
+  const n  = k => entries.reduce((s, e) => s + (parseInt(e.stat[k]) || 0), 0);
+  const ab = n('atBats'), pa = n('plateAppearances'), h = n('hits');
+  const bb = n('baseOnBalls'), hbp = n('hitByPitch'), tb = n('totalBases');
+  const obp = pa > 0 ? (h + bb + hbp) / pa : 0;
+  const slg = ab > 0 ? tb / ab : 0;
+  return {
+    atBats: ab, plateAppearances: pa, hits: h,
+    doubles: n('doubles'), triples: n('triples'), homeRuns: n('homeRuns'),
+    rbi: n('rbi'), stolenBases: n('stolenBases'),
+    avg: ab > 0 ? (h / ab).toFixed(3)   : '.000',
+    obp: pa > 0 ? obp.toFixed(3)         : '.000',
+    slg: ab > 0 ? slg.toFixed(3)         : '.000',
+    ops: ab > 0 ? (obp + slg).toFixed(3) : '.000',
+  };
+}
+
+function aggregatePitching(entries) {
+  const n  = k => entries.reduce((s, e) => s + (parseInt(e.stat[k]) || 0), 0);
+  // inningsPitched uses MLB's x.y format where .1 = 1 out (1/3 inning), .2 = 2 outs (2/3)
+  const ip = entries.reduce((s, e) => {
+    const v = parseFloat(e.stat.inningsPitched) || 0;
+    return s + Math.floor(v) + (v % 1) * 10 / 3;
+  }, 0);
+  const ipWhole = Math.floor(ip), ipOuts = Math.round((ip - ipWhole) * 3);
+  const ipStr = ipOuts >= 3 ? `${ipWhole + 1}.0` : `${ipWhole}.${ipOuts}`;
+  const er = n('earnedRuns'), h = n('hits'), bb = n('baseOnBalls'), k = n('strikeOuts');
+  return {
+    inningsPitched: ipStr, earnedRuns: er, hits: h, baseOnBalls: bb, strikeOuts: k,
+    saves: n('saves'),
+    era:               ip > 0 ? (er / ip * 9).toFixed(2) : '-.--',
+    whip:              ip > 0 ? ((h + bb) / ip).toFixed(2) : '-.--',
+    strikeoutsPer9Inn: ip > 0 ? (k  / ip * 9).toFixed(1)  : '-.--',
+    walksPer9Inn:      ip > 0 ? (bb / ip * 9).toFixed(1)  : '-.--',
+  };
+}
+
+async function loadLast7() {
+  hide('tab-team'); hide('tab-players'); show('loading');
+  el('load-msg').textContent = 'Fetching last 7 appearances…';
+  document.querySelectorAll('.win-btn').forEach(b => b.disabled = true);
+
+  const startDate = state.schedDates[state.schedDates.length - 7];
+  const endDate   = state.schedDates[state.schedDates.length - 1];
+  const rng = `stats=byDateRange&startDate=${startDate}&endDate=${endDate}`;
+  try {
+    // Team rankings: all 30 teams over the same 7-game date window
+    const [th, tp] = await Promise.all([
+      mlb(`/teams/stats?${rng}&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
+      mlb(`/teams/stats?${rng}&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
+    ]);
+
+    // Player stats: individual game logs → last 7 actual appearances per player
+    const hIds = state.seasonData.hitters.map(p => p.player.id);
+    const pIds = state.seasonData.pitchers.map(p => p.player.id);
+    const [hLogs, pLogs] = await Promise.all([
+      Promise.all(hIds.map(id => mlb(`/people/${id}/stats?stats=gameLog&season=${SEASON}&group=hitting&gameType=R`))),
+      Promise.all(pIds.map(id => mlb(`/people/${id}/stats?stats=gameLog&season=${SEASON}&group=pitching&gameType=R`))),
+    ]);
+
+    const hitters = state.seasonData.hitters.map((p, i) => {
+      const last7 = (hLogs[i].stats?.[0]?.splits || []).slice(-7);
+      return last7.length ? { player: p.player, stat: aggregateBatting(last7) } : null;
+    }).filter(Boolean);
+
+    const pitchers = state.seasonData.pitchers.map((p, i) => {
+      const last7 = (pLogs[i].stats?.[0]?.splits || []).slice(-7);
+      return last7.length ? { player: p.player, stat: aggregatePitching(last7) } : null;
+    }).filter(Boolean);
+
+    state.last7Data = {
+      teamHit: th.stats?.[0]?.splits || [], teamPitch: tp.stats?.[0]?.splits || [],
+      hitters, pitchers,
+    };
+    state.teamHit = state.last7Data.teamHit; state.teamPitch = state.last7Data.teamPitch;
+    state.natsHitters = state.last7Data.hitters; state.natsPitchers = state.last7Data.pitchers;
+    document.querySelectorAll('.win-btn').forEach(b => b.disabled = false);
+    hide('loading'); render(); switchTab(state.tab);
+  } catch(e) {
+    state.window = 'season';
+    state.teamHit = state.seasonData.teamHit; state.teamPitch = state.seasonData.teamPitch;
+    state.natsHitters = state.seasonData.hitters; state.natsPitchers = state.seasonData.pitchers;
+    document.querySelectorAll('.win-btn').forEach((b,i) => { b.disabled=false; b.classList.toggle('active',i===0); });
+    hide('loading'); show('error-panel');
+    el('error-msg').textContent = 'Could not load last 7 appearances: ' + e.message;
+  }
 }
 
 // ─── AVG LINE PLUGIN ─────────────────────────────────────────────────────────

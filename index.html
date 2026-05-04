@@ -328,11 +328,7 @@
         <canvas id="teamChart"></canvas>
       </div>
     </div>
-    <div class="note" id="context-note">
-      <strong>📊 Nationals context:</strong>
-      Offense ranks <span class="good">3rd in MLB in runs scored</span> (tied HOU/LAD) — fuelled by CJ Abrams (.356 through first 17 games).
-      Pitching ranks <span class="bad">29th in starter ERA, 30th in bullpen ERA</span> after trading MacKenzie Gore to Texas in January 2026.
-    </div>
+    <div class="note" id="context-note"></div>
   </div>
 
   <!-- PLAYERS TAB -->
@@ -710,14 +706,50 @@ function sortPlayers(key) {
 function renderNote() {
   const note = el('context-note');
   if (!note) return;
+
   if (state.window === 'last7') {
     const fmt = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', {month:'short', day:'numeric'});
     const start = state.schedDates[state.schedDates.length - 7];
     const end   = state.schedDates[state.schedDates.length - 1];
     note.innerHTML = `<strong>📅 Last 7 appearances</strong> (team window: ${fmt(start)} – ${fmt(end)}) · Team rankings use the same date range. Player stats are each player's last 7 individual appearances — benched games don't count.`;
-  } else {
-    note.innerHTML = `<strong>📊 Nationals context:</strong> Offense ranks <span class="good">3rd in MLB in runs scored</span> (tied HOU/LAD) — fuelled by CJ Abrams (.356 through first 17 games). Pitching ranks <span class="bad">29th in starter ERA, 30th in bullpen ERA</span> after trading MacKenzie Gore to Texas in January 2026.`;
+    return;
   }
+
+  function rankOf(data, key, higher) {
+    const sorted = [...data]
+      .map(t => ({ id: t.team?.id, val: parseFloat(t.stat?.[key]) || 0 }))
+      .filter(t => t.val > 0)
+      .sort((a, b) => higher ? b.val - a.val : a.val - b.val);
+    const idx = sorted.findIndex(t => t.id === NATS_ID);
+    return idx >= 0 ? idx + 1 : null;
+  }
+  function ord(n) {
+    if (!n) return '—';
+    const v = n % 100;
+    return n + (['th','st','nd','rd'][(v - 20) % 10] || ['th','st','nd','rd'][v] || 'th');
+  }
+  function cls(rank) {
+    return rank <= 10 ? 'good' : rank >= 21 ? 'bad' : '';
+  }
+
+  const offRank  = rankOf(state.teamHit,   'runs', true);
+  const eraRank  = rankOf(state.teamPitch, 'era',  false);
+  const natsHit  = state.teamHit.find(t => t.team?.id === NATS_ID);
+  const natsPit  = state.teamPitch.find(t => t.team?.id === NATS_ID);
+
+  const topHitter = [...state.natsHitters]
+    .sort((a, b) => parseFloat(b.stat?.ops || 0) - parseFloat(a.stat?.ops || 0))[0];
+  const topPitcher = [...state.natsPitchers]
+    .sort((a, b) => parseFloat(a.stat?.era || 99) - parseFloat(b.stat?.era || 99))[0];
+
+  const runsStr  = natsHit?.stat?.runs ? ` (${natsHit.stat.runs} R)` : '';
+  const eraStr   = natsPit?.stat?.era  ? `, ${(+natsPit.stat.era).toFixed(2)} ERA` : '';
+  const hitterStr  = topHitter  ? ` — led by ${topHitter.player.fullName} (${topHitter.stat.avg} AVG, ${topHitter.stat.ops} OPS)` : '';
+  const pitcherStr = topPitcher ? ` — led by ${topPitcher.player.fullName} (${(+topPitcher.stat.era).toFixed(2)} ERA, ${topPitcher.stat.inningsPitched} IP)` : '';
+
+  note.innerHTML = `<strong>📊 Nationals context:</strong> `
+    + `Offense ranks <span class="${cls(offRank)}">${ord(offRank)} in runs${runsStr}</span>${hitterStr}. `
+    + `Pitching ranks <span class="${cls(eraRank)}">${ord(eraRank)} in ERA${eraStr}</span>${pitcherStr}.`;
 }
 
 function setWindow(w) {

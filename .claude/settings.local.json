@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx --yes playwright --version)",
+      "Bash(node -e \"require\\('puppeteer'\\)\")",
+      "Bash(python3 -c \"import selenium\")",
+      "Bash(\"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome\" --version)",
+      "Bash(open /Users/Ken/nationals-dashboard/index.html)"
+    ]
+  }
+}

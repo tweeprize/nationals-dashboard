@@ -528,27 +528,7 @@ function renderChart(sorted, avg, cfg) {
     }
   });
 
-  // manual avg line (annotation plugin not always available on CDN)
-  // draw it via afterDraw plugin instead
-  Chart.register({
-    id: 'avgLine',
-    afterDraw(chart) {
-      if (chart !== state.chart) return;
-      const {ctx, scales:{x, y}} = chart;
-      if (!x || !y) return;
-      const xPos = x.getPixelForValue(avg);
-      if (isNaN(xPos)) return;
-      ctx.save();
-      ctx.strokeStyle = '#D4B44A';
-      ctx.lineWidth = 1.5;
-      ctx.setLineDash([4,3]);
-      ctx.beginPath();
-      ctx.moveTo(xPos, y.top);
-      ctx.lineTo(xPos, y.bottom);
-      ctx.stroke();
-      ctx.restore();
-    }
-  });
+  state.chart._avgValue = avg;
   state.chart.update();
 }
 
@@ -590,7 +570,7 @@ function renderPlayerTable() {
   thead.innerHTML = `
     <tr class="hdr">
       <th>PLAYER</th>
-      ${stats.map(s=>`<th class="${s.key===state.playerSort?'sort-active':''}" onclick="sortPlayers('${s.key}')">${s.label}${s.key===state.playerSort?(sortCfg?.higher?' ▼':' ▲'):''}</th>`).join('')}
+      ${stats.map(s=>{const isActive=s.key===state.playerSort;const arrow=isActive?(s.higher?(state.playerSortDir===1?' ▼':' ▲'):(state.playerSortDir===1?' ▲':' ▼')):'';return`<th class="${isActive?'sort-active':''}" onclick="sortPlayers('${s.key}')">${s.label}${arrow}</th>`;}).join('')}
     </tr>
     <tr class="avg-row">
       <td>League Avg</td>
@@ -618,7 +598,7 @@ function switchTab(t) {
 function setGroup(g) {
   state.group = g;
   state.stat  = g==='hitting' ? 'ops' : 'era';
-  document.querySelectorAll('.group-btn').forEach((b,i)=>b.classList.toggle('active',i===(g==='hitting'?0:1)));
+  document.querySelectorAll('#tab-team .group-btn').forEach((b,i)=>b.classList.toggle('active',i===(g==='hitting'?0:1)));
   renderStatButtons();
   renderTeamView();
 }
@@ -633,7 +613,7 @@ function setPlayerGroup(g) {
   state.playerGroup = g;
   state.playerSort  = g==='batting' ? 'ops' : 'era';
   state.playerSortDir = 1;
-  document.querySelectorAll('.group-btn').forEach((b,i)=>b.classList.toggle('active',i===(g==='batting'?0:1)));
+  document.querySelectorAll('#tab-players .group-btn').forEach((b,i)=>b.classList.toggle('active',i===(g==='batting'?0:1)));
   renderPlayerTable();
 }
 
@@ -646,6 +626,29 @@ function sortPlayers(key) {
   }
   renderPlayerTable();
 }
+
+// ─── AVG LINE PLUGIN ─────────────────────────────────────────────────────────
+Chart.register({
+  id: 'avgLine',
+  afterDraw(chart) {
+    if (chart !== state.chart) return;
+    const {ctx, scales:{x, y}} = chart;
+    if (!x || !y) return;
+    const avg = chart._avgValue;
+    if (avg === undefined || isNaN(avg)) return;
+    const xPos = x.getPixelForValue(avg);
+    if (isNaN(xPos)) return;
+    ctx.save();
+    ctx.strokeStyle = '#D4B44A';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4,3]);
+    ctx.beginPath();
+    ctx.moveTo(xPos, y.top);
+    ctx.lineTo(xPos, y.bottom);
+    ctx.stroke();
+    ctx.restore();
+  }
+});
 
 // ─── BOOT ────────────────────────────────────────────────────────────────────
 loadData();

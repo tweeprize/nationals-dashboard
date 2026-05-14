@@ -550,8 +550,8 @@ function renderChart(sorted, avg, cfg) {
       labels: sorted.map(t=>t.abbr),
       datasets: [{
         data: sorted.map(t=>t.val),
-        backgroundColor: sorted.map(t=>t.isNats ? '#C0001D' : 'rgba(26,51,110,0.7)'),
-        borderColor:     sorted.map(t=>t.isNats ? '#ff3355' : 'transparent'),
+        backgroundColor: sorted.map(t=>t.isNats ? '#DF4601' : 'rgba(0,0,0,0.5)'),
+        borderColor:     sorted.map(t=>t.isNats ? '#FF8C00' : 'transparent'),
         borderWidth:     sorted.map(t=>t.isNats ? 1.5 : 0),
         borderRadius: 3,
         barThickness: window.innerWidth < 480 ? 11 : 15,

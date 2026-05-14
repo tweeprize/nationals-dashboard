@@ -380,7 +380,7 @@ const HIT_STATS = [
   {key:'slg',         label:'SLG',  higher:true,  fmt:v=>(+v).toFixed(3), desc:'Slugging %'},
   {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount,           desc:'Home Runs'},
   {key:'runs',        label:'R',    higher:true,  fmt:fmtCount,           desc:'Runs Scored'},
-  {key:'rbi',         label:'RBI',  higher:true,  fmt:fmtCount,           desc:'RBI'},
+  {key:'errors',       label:'ERR',  higher:false, fmt:fmtCount,           desc:'Errors'},
   {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           desc:'Stolen Bases'},
 ];
 const PITCH_STATS = [
@@ -393,12 +393,11 @@ const PITCH_STATS = [
 ];
 
 const PLAYER_HIT_STATS = [
+  {key:'ops',         label:'OPS',  higher:true,  fmt:v=>(+v).toFixed(3)},
   {key:'avg',         label:'AVG',  higher:true,  fmt:v=>(+v).toFixed(3)},
   {key:'obp',         label:'OBP',  higher:true,  fmt:v=>(+v).toFixed(3), mobileHide:true},
   {key:'slg',         label:'SLG',  higher:true,  fmt:v=>(+v).toFixed(3), mobileHide:true},
-  {key:'ops',         label:'OPS',  higher:true,  fmt:v=>(+v).toFixed(3)},
   {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount,           countStat:true},
-  {key:'rbi',         label:'RBI',  higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
   {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
 ];
 const PLAYER_PITCH_STATS = [
@@ -449,11 +448,12 @@ async function loadData() {
   let mi = 0;
   const ticker = setInterval(()=>{ el('load-msg').textContent = msgs[Math.min(++mi,msgs.length-1)]; }, 1800);
   try {
-    const [th, tp, nh, np, sched] = await Promise.all([
+    const [th, tp, nh, np, thf, sched] = await Promise.all([
       mlb(`/teams/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/teams/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
       mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
+      mlb(`/teams/stats?stats=season&group=fielding&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/schedule?teamId=${NATS_ID}&season=${SEASON}&gameType=R&sportId=1`),
     ]);
 
@@ -469,6 +469,11 @@ async function loadData() {
     state.teamPitch = tp.stats?.[0]?.splits || [];
     state.natsHitters  = (nh.stats?.[0]?.splits || []).filter(s => (s.stat?.plateAppearances || 0) >= 20);
     state.natsPitchers = (np.stats?.[0]?.splits || []).filter(s => parseFloat(s.stat?.inningsPitched || '0') >= 5);
+
+    // merge fielding errors into hitting splits
+    const teamFieldingMap = {};
+    for (const s of (thf.stats?.[0]?.splits || [])) teamFieldingMap[s.team?.id] = parseInt(s.stat?.errors) || 0;
+    for (const s of state.teamHit) s.stat.errors = teamFieldingMap[s.team?.id] || 0;
 
     state.seasonData = { teamHit: state.teamHit, teamPitch: state.teamPitch,
                          hitters: state.natsHitters, pitchers: state.natsPitchers };
@@ -780,7 +785,7 @@ function aggregateBatting(entries) {
   return {
     atBats: ab, plateAppearances: pa, hits: h,
     doubles: n('doubles'), triples: n('triples'), homeRuns: n('homeRuns'),
-    rbi: n('rbi'), stolenBases: n('stolenBases'),
+    stolenBases: n('stolenBases'),
     avg: ab > 0 ? (h / ab).toFixed(3)   : '.000',
     obp: pa > 0 ? obp.toFixed(3)         : '.000',
     slg: ab > 0 ? slg.toFixed(3)         : '.000',
@@ -818,10 +823,16 @@ async function loadLast7() {
   const rng = `stats=byDateRange&startDate=${startDate}&endDate=${endDate}`;
   try {
     // Team rankings: all 30 teams over the same 7-game date window
-    const [th, tp] = await Promise.all([
+    const [th, tp, thf] = await Promise.all([
       mlb(`/teams/stats?${rng}&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/teams/stats?${rng}&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
+      mlb(`/teams/stats?${rng}&group=fielding&gameType=R&season=${SEASON}&sportId=1`),
     ]);
+
+    // merge fielding errors into last7 team hitting splits
+    const teamFieldingMap = {};
+    for (const s of (thf.stats?.[0]?.splits || [])) teamFieldingMap[s.team?.id] = parseInt(s.stat?.errors) || 0;
+    for (const s of (th.stats?.[0]?.splits || [])) s.stat.errors = teamFieldingMap[s.team?.id] || 0;
 
     // Player stats: individual game logs → last 7 actual appearances per player
     const hIds = state.seasonData.hitters.map(p => p.player.id);

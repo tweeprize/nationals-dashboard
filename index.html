@@ -4,9 +4,10 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src https://cdnjs.cloudflare.com 'unsafe-inline'; style-src https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; connect-src https://statsapi.mlb.com; img-src 'self'">
 <title>Washington Nationals Dashboard</title>
 <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=Barlow:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js" integrity="sha384-bs/nf9FbdNouRbMiFcrcZfLXYPKiPaGVGplVbv7dLGECccEXDW+S3zjqSKR5ZEaD" crossorigin="anonymous"></script>
 <style>
   :root {
     --red:   #C0001D;
@@ -423,6 +424,10 @@ let state = {
 };
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s == null ? '—' : s)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
 function mean(arr) {
   const v = arr.map(x=>parseFloat(x)).filter(x=>!isNaN(x)&&x>0);
   return v.length ? v.reduce((a,b)=>a+b,0)/v.length : 0;
@@ -660,8 +665,8 @@ function renderPlayerTable() {
   tbody.innerHTML = sorted.map(p=>`
     <tr>
       <td>
-        <div class="player-name">${p.player?.fullName||'—'}</div>
-        <div class="player-sub">${sub(p)}</div>
+        <div class="player-name">${esc(p.player?.fullName)}</div>
+        <div class="player-sub">${esc(sub(p))}</div>
       </td>
       ${stats.map(s=>`<td class="${s.mobileHide?'mobile-hide':''}">${pill(p.stat?.[s.key], avgs[s.key], s.higher, s.fmt)}</td>`).join('')}
     </tr>`).join('') || `<tr><td colspan="${stats.length+1}" style="text-align:center;padding:30px;color:var(--muted)">No qualified players</td></tr>`;
@@ -749,8 +754,8 @@ function renderNote() {
 
   const runsStr  = natsHit?.stat?.runs ? ` (${natsHit.stat.runs} R)` : '';
   const eraStr   = natsPit?.stat?.era  ? `, ${(+natsPit.stat.era).toFixed(2)} ERA` : '';
-  const hitterStr  = topHitter  ? ` — led by ${topHitter.player.fullName} (${topHitter.stat.avg} AVG, ${topHitter.stat.ops} OPS)` : '';
-  const pitcherStr = topPitcher ? ` — led by ${topPitcher.player.fullName} (${(+topPitcher.stat.era).toFixed(2)} ERA, ${topPitcher.stat.inningsPitched} IP)` : '';
+  const hitterStr  = topHitter  ? ` — led by ${esc(topHitter.player.fullName)} (${esc(topHitter.stat.avg)} AVG, ${esc(topHitter.stat.ops)} OPS)` : '';
+  const pitcherStr = topPitcher ? ` — led by ${esc(topPitcher.player.fullName)} (${(+topPitcher.stat.era).toFixed(2)} ERA, ${esc(topPitcher.stat.inningsPitched)} IP)` : '';
 
   note.innerHTML = `<strong>📊 Nationals context:</strong> `
     + `Offense ranks <span class="${cls(offRank)}">${ord(offRank)} in runs${runsStr}</span>${hitterStr}. `

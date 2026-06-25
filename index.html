@@ -383,37 +383,38 @@ const TEAM_ABB = {
 function teamAbb(id) { return TEAM_ABB[id] || '???'; }
 
 // ─── TEAMS ───────────────────────────────────────────────────────────────────
+// colors: primary=active buttons/chart bar, dark=header bg, accent=highlights/avg line
 const MLB_TEAMS = [
-  {id:120, name:'Washington Nationals',  city:'Washington',   nick:'Nationals'},
-  {id:109, name:'Arizona Diamondbacks',  city:'Arizona',      nick:'Diamondbacks'},
-  {id:144, name:'Atlanta Braves',        city:'Atlanta',      nick:'Braves'},
-  {id:110, name:'Baltimore Orioles',     city:'Baltimore',    nick:'Orioles'},
-  {id:111, name:'Boston Red Sox',        city:'Boston',       nick:'Red Sox'},
-  {id:112, name:'Chicago Cubs',          city:'Chicago',      nick:'Cubs'},
-  {id:145, name:'Chicago White Sox',     city:'Chicago',      nick:'White Sox'},
-  {id:113, name:'Cincinnati Reds',       city:'Cincinnati',   nick:'Reds'},
-  {id:114, name:'Cleveland Guardians',   city:'Cleveland',    nick:'Guardians'},
-  {id:115, name:'Colorado Rockies',      city:'Colorado',     nick:'Rockies'},
-  {id:116, name:'Detroit Tigers',        city:'Detroit',      nick:'Tigers'},
-  {id:117, name:'Houston Astros',        city:'Houston',      nick:'Astros'},
-  {id:118, name:'Kansas City Royals',    city:'Kansas City',  nick:'Royals'},
-  {id:108, name:'Los Angeles Angels',    city:'Los Angeles',  nick:'Angels'},
-  {id:119, name:'Los Angeles Dodgers',   city:'Los Angeles',  nick:'Dodgers'},
-  {id:146, name:'Miami Marlins',         city:'Miami',        nick:'Marlins'},
-  {id:158, name:'Milwaukee Brewers',     city:'Milwaukee',    nick:'Brewers'},
-  {id:142, name:'Minnesota Twins',       city:'Minnesota',    nick:'Twins'},
-  {id:121, name:'New York Mets',         city:'New York',     nick:'Mets'},
-  {id:147, name:'New York Yankees',      city:'New York',     nick:'Yankees'},
-  {id:133, name:'Oakland Athletics',     city:'Oakland',      nick:'Athletics'},
-  {id:143, name:'Philadelphia Phillies', city:'Philadelphia', nick:'Phillies'},
-  {id:134, name:'Pittsburgh Pirates',    city:'Pittsburgh',   nick:'Pirates'},
-  {id:135, name:'San Diego Padres',      city:'San Diego',    nick:'Padres'},
-  {id:137, name:'San Francisco Giants',  city:'San Francisco',nick:'Giants'},
-  {id:136, name:'Seattle Mariners',      city:'Seattle',      nick:'Mariners'},
-  {id:138, name:'St. Louis Cardinals',   city:'St. Louis',    nick:'Cardinals'},
-  {id:139, name:'Tampa Bay Rays',        city:'Tampa Bay',    nick:'Rays'},
-  {id:140, name:'Texas Rangers',         city:'Texas',        nick:'Rangers'},
-  {id:141, name:'Toronto Blue Jays',     city:'Toronto',      nick:'Blue Jays'},
+  {id:120, name:'Washington Nationals',  city:'Washington',    nick:'Nationals',   colors:{primary:'#C0001D',dark:'#011E62',accent:'#D4B44A'}},
+  {id:109, name:'Arizona Diamondbacks',  city:'Arizona',       nick:'Diamondbacks',colors:{primary:'#A71930',dark:'#1A1010',accent:'#E3D4AD'}},
+  {id:144, name:'Atlanta Braves',        city:'Atlanta',       nick:'Braves',      colors:{primary:'#CE1141',dark:'#13274F',accent:'#EAAA00'}},
+  {id:110, name:'Baltimore Orioles',     city:'Baltimore',     nick:'Orioles',     colors:{primary:'#DF4601',dark:'#1A1210',accent:'#F0A060'}},
+  {id:111, name:'Boston Red Sox',        city:'Boston',        nick:'Red Sox',     colors:{primary:'#BD3039',dark:'#0C2340',accent:'#C8A850'}},
+  {id:112, name:'Chicago Cubs',          city:'Chicago',       nick:'Cubs',        colors:{primary:'#CC3433',dark:'#0E3386',accent:'#C8B460'}},
+  {id:145, name:'Chicago White Sox',     city:'Chicago',       nick:'White Sox',   colors:{primary:'#3A3A3A',dark:'#1A1A1A',accent:'#C4CED4'}},
+  {id:113, name:'Cincinnati Reds',       city:'Cincinnati',    nick:'Reds',        colors:{primary:'#C6011F',dark:'#1A1010',accent:'#C87040'}},
+  {id:114, name:'Cleveland Guardians',   city:'Cleveland',     nick:'Guardians',   colors:{primary:'#E31937',dark:'#002B5C',accent:'#E8A830'}},
+  {id:115, name:'Colorado Rockies',      city:'Colorado',      nick:'Rockies',     colors:{primary:'#7040B8',dark:'#33006F',accent:'#C4CED4'}},
+  {id:116, name:'Detroit Tigers',        city:'Detroit',       nick:'Tigers',      colors:{primary:'#FA4616',dark:'#001742',accent:'#F8A040'}},
+  {id:117, name:'Houston Astros',        city:'Houston',       nick:'Astros',      colors:{primary:'#EB6E1F',dark:'#002D62',accent:'#EBB050'}},
+  {id:118, name:'Kansas City Royals',    city:'Kansas City',   nick:'Royals',      colors:{primary:'#4A88CC',dark:'#004687',accent:'#C09A5B'}},
+  {id:108, name:'Los Angeles Angels',    city:'Los Angeles',   nick:'Angels',      colors:{primary:'#BA0021',dark:'#003263',accent:'#C8A850'}},
+  {id:119, name:'Los Angeles Dodgers',   city:'Los Angeles',   nick:'Dodgers',     colors:{primary:'#1A74D0',dark:'#003087',accent:'#D4AF30'}},
+  {id:146, name:'Miami Marlins',         city:'Miami',         nick:'Marlins',     colors:{primary:'#00A3E0',dark:'#0D1117',accent:'#EF3340'}},
+  {id:158, name:'Milwaukee Brewers',     city:'Milwaukee',     nick:'Brewers',     colors:{primary:'#1E3A72',dark:'#12284B',accent:'#FFC52F'}},
+  {id:142, name:'Minnesota Twins',       city:'Minnesota',     nick:'Twins',       colors:{primary:'#CE0033',dark:'#002B5C',accent:'#D4AA40'}},
+  {id:121, name:'New York Mets',         city:'New York',      nick:'Mets',        colors:{primary:'#FF5910',dark:'#002D72',accent:'#FF8A40'}},
+  {id:147, name:'New York Yankees',      city:'New York',      nick:'Yankees',     colors:{primary:'#3A5080',dark:'#1A2840',accent:'#C4CED4'}},
+  {id:133, name:'Oakland Athletics',     city:'Oakland',       nick:'Athletics',   colors:{primary:'#00693C',dark:'#003831',accent:'#EFB21E'}},
+  {id:143, name:'Philadelphia Phillies', city:'Philadelphia',  nick:'Phillies',    colors:{primary:'#E81828',dark:'#002B5C',accent:'#C09040'}},
+  {id:134, name:'Pittsburgh Pirates',    city:'Pittsburgh',    nick:'Pirates',     colors:{primary:'#1A1A1A',dark:'#141414',accent:'#FDB827'}},
+  {id:135, name:'San Diego Padres',      city:'San Diego',     nick:'Padres',      colors:{primary:'#2F241D',dark:'#1A140E',accent:'#FFC425'}},
+  {id:137, name:'San Francisco Giants',  city:'San Francisco', nick:'Giants',      colors:{primary:'#FD5A1E',dark:'#27251F',accent:'#FFA040'}},
+  {id:136, name:'Seattle Mariners',      city:'Seattle',       nick:'Mariners',    colors:{primary:'#00887A',dark:'#0C2C56',accent:'#70C0A8'}},
+  {id:138, name:'St. Louis Cardinals',   city:'St. Louis',     nick:'Cardinals',   colors:{primary:'#C41E3A',dark:'#0C2340',accent:'#D4AA40'}},
+  {id:139, name:'Tampa Bay Rays',        city:'Tampa Bay',     nick:'Rays',        colors:{primary:'#3A78C0',dark:'#092C5C',accent:'#F5D130'}},
+  {id:140, name:'Texas Rangers',         city:'Texas',         nick:'Rangers',     colors:{primary:'#C0111F',dark:'#003278',accent:'#C0A040'}},
+  {id:141, name:'Toronto Blue Jays',     city:'Toronto',       nick:'Blue Jays',   colors:{primary:'#E8291C',dark:'#134A8E',accent:'#E8C040'}},
 ];
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
@@ -487,6 +488,19 @@ function el(id) { return document.getElementById(id); }
 function show(id) { el(id).classList.remove('hidden'); }
 function hide(id) { el(id).classList.add('hidden'); }
 
+function hexToRgb(hex) {
+  const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return r ? {r:parseInt(r[1],16), g:parseInt(r[2],16), b:parseInt(r[3],16)} : null;
+}
+function darken(hex, amount) {
+  const c = hexToRgb(hex); if (!c) return hex;
+  return `#${[c.r,c.g,c.b].map(v=>Math.round(v*(1-amount)).toString(16).padStart(2,'0')).join('')}`;
+}
+function lighten(hex, amount) {
+  const c = hexToRgb(hex); if (!c) return hex;
+  return `#${[c.r,c.g,c.b].map(v=>Math.round(v+(255-v)*amount).toString(16).padStart(2,'0')).join('')}`;
+}
+
 // ─── FETCH ───────────────────────────────────────────────────────────────────
 async function mlb(path) {
   const r = await fetch(BASE + path);
@@ -494,7 +508,9 @@ async function mlb(path) {
   return r.json();
 }
 
-async function loadData() {
+async function loadData(opts = {}) {
+  const restoreTab    = opts.tab    || 'team';
+  const restoreWindow = opts.window || 'season';
   hide('tab-team'); hide('tab-players'); hide('error-panel'); show('loading');
   state.window = 'season'; state.last7Data = null;
   document.querySelectorAll('.win-btn').forEach((b,i)=>{ b.classList.toggle('active',i===0); b.disabled=false; });
@@ -536,7 +552,8 @@ async function loadData() {
     clearInterval(ticker);
     hide('loading');
     render();
-    switchTab('team');
+    switchTab(restoreTab);
+    if (restoreWindow === 'last7' && state.schedDates.length >= 7) loadLast7();
   } catch(e) {
     clearInterval(ticker);
     hide('loading'); show('error-panel');
@@ -599,14 +616,21 @@ function renderChart(sorted, avg, cfg) {
   canvas.height = Math.max(sorted.length * 22, 400);
   if (state.chart) { state.chart.destroy(); state.chart = null; }
 
+  const tc       = MLB_TEAMS.find(t => t.id === selectedTeamId)?.colors || {};
+  const primary  = tc.primary || '#C0001D';
+  const accent   = tc.accent  || '#D4B44A';
+  const darkRgb  = hexToRgb(tc.dark || '#011E62') || {r:1,g:30,b:98};
+  const otherBar = lighten(tc.dark || '#011E62', 0.2);
+  const otherRgb = hexToRgb(otherBar) || {r:52,g:75,b:130};
+
   state.chart = new Chart(canvas, {
     type: 'bar',
     data: {
       labels: sorted.map(t=>t.abbr),
       datasets: [{
         data: sorted.map(t=>t.val),
-        backgroundColor: sorted.map(t=>t.isNats ? '#C0001D' : 'rgba(26,51,110,0.7)'),
-        borderColor:     sorted.map(t=>t.isNats ? '#ff3355' : 'transparent'),
+        backgroundColor: sorted.map(t=>t.isNats ? primary : `rgba(${otherRgb.r},${otherRgb.g},${otherRgb.b},0.7)`),
+        borderColor:     sorted.map(t=>t.isNats ? lighten(primary,0.2) : 'transparent'),
         borderWidth:     sorted.map(t=>t.isNats ? 1.5 : 0),
         borderRadius: 3,
         barThickness: window.innerWidth < 480 ? 11 : 15,
@@ -623,42 +647,31 @@ function renderChart(sorted, avg, cfg) {
             title: ctx => sorted[ctx[0].dataIndex]?.name || '',
             label: ctx => ' ' + cfg?.fmt(ctx.raw),
           },
-          backgroundColor: '#0d1830',
-          borderColor: '#1a2d5a',
+          backgroundColor: darken(tc.dark || '#011E62', 0.4),
+          borderColor: lighten(tc.dark || '#011E62', 0.1),
           borderWidth: 1,
           titleColor: '#dde4f0',
           bodyColor: '#dde4f0',
         },
-        annotation: {
-          annotations: {
-            avgLine: {
-              type: 'line',
-              scaleID: 'x',
-              value: avg,
-              borderColor: '#D4B44A',
-              borderWidth: 1.5,
-              borderDash: [4, 3],
-            }
-          }
-        }
       },
       scales: {
         x: {
-          ticks: { color: '#6a7da0', font:{size:10} },
-          grid:  { color: 'rgba(26,45,90,0.5)' },
+          ticks: { color: lighten(tc.dark || '#011E62', 0.45), font:{size:10} },
+          grid:  { color: `rgba(${darkRgb.r},${darkRgb.g},${darkRgb.b},0.5)` },
         },
         y: {
           ticks: {
-            color: ctx => sorted[ctx.index]?.isNats ? '#C0001D' : '#6a7da0',
+            color: ctx => sorted[ctx.index]?.isNats ? primary : lighten(tc.dark || '#011E62', 0.45),
             font:  ctx => ({size: sorted[ctx.index]?.isNats ? 12 : 10, weight: sorted[ctx.index]?.isNats ? '700':'400'}),
           },
-          grid: { color: 'rgba(26,45,90,0.3)' },
+          grid: { color: `rgba(${darkRgb.r},${darkRgb.g},${darkRgb.b},0.3)` },
         }
       }
     }
   });
 
-  state.chart._avgValue = avg;
+  state.chart._avgValue   = avg;
+  state.chart._accentColor = accent;
   state.chart.update();
 }
 
@@ -938,7 +951,7 @@ Chart.register({
     const xPos = x.getPixelForValue(avg);
     if (isNaN(xPos)) return;
     ctx.save();
-    ctx.strokeStyle = '#D4B44A';
+    ctx.strokeStyle = chart._accentColor || '#D4B44A';
     ctx.lineWidth = 1.5;
     ctx.setLineDash([4,3]);
     ctx.beginPath();
@@ -950,10 +963,27 @@ Chart.register({
 });
 
 // ─── TEAM SELECTOR ───────────────────────────────────────────────────────────
+function applyTeamColors(team) {
+  if (!team?.colors) return;
+  const {primary, dark, accent} = team.colors;
+  const root = document.documentElement;
+  root.style.setProperty('--red',    primary);
+  root.style.setProperty('--navy',   dark);
+  root.style.setProperty('--gold',   accent);
+  root.style.setProperty('--bg',     darken(dark, 0.70));
+  root.style.setProperty('--card',   darken(dark, 0.55));
+  root.style.setProperty('--border', lighten(dark, 0.10));
+  root.style.setProperty('--muted',  lighten(dark, 0.45));
+  root.style.setProperty('--text',   lighten(dark, 0.85));
+}
+
 function setTeam(id) {
+  const savedTab    = state.tab;
+  const savedWindow = state.window;
   selectedTeamId = id;
   updateLogoTitle();
-  loadData();
+  applyTeamColors(MLB_TEAMS.find(t => t.id === id));
+  loadData({ tab: savedTab, window: savedWindow });
 }
 
 function updateLogoTitle() {
@@ -977,6 +1007,7 @@ window.addEventListener('resize', () => {
 });
 
 populateTeamSelect();
+applyTeamColors(MLB_TEAMS.find(t => t.id === selectedTeamId));
 loadData();
 </script>
 </body>

@@ -81,6 +81,20 @@
   .win-btn.active { background: var(--gold); color: var(--navy); }
   .win-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
+  /* ── TEAM SELECT ─────────────────────────────── */
+  .team-select {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.06);
+    color: var(--text);
+    cursor: pointer;
+  }
+
   /* ── TABS ─────────────────────────────── */
   .tabs { display: flex; gap: 6px; }
   .tab-btn {
@@ -277,6 +291,7 @@
 
     .note { font-size: 10px; padding: 8px 10px; }
     .table-footer { font-size: 10px; padding: 6px 10px; line-height: 1.8; }
+    .team-select { font-size: 11px; padding: 4px 6px; max-width: 150px; }
   }
 </style>
 </head>
@@ -284,10 +299,11 @@
 
 <header>
   <div class="logo">
-    <div class="logo-title">Washington <span>Nationals</span></div>
+    <div class="logo-title" id="logo-title">Washington <span>Nationals</span></div>
     <div class="logo-sub">2026 Season · Live MLB Data · vs League Average</div>
   </div>
   <div class="header-right">
+    <select class="team-select" id="team-select" onchange="setTeam(+this.value)"></select>
     <div class="win-toggle">
       <button class="win-btn active" onclick="setWindow('season')">Season</button>
       <button class="win-btn"        onclick="setWindow('last7')">Last 7</button>
@@ -366,8 +382,42 @@ const TEAM_ABB = {
 };
 function teamAbb(id) { return TEAM_ABB[id] || '???'; }
 
+// ─── TEAMS ───────────────────────────────────────────────────────────────────
+const MLB_TEAMS = [
+  {id:120, name:'Washington Nationals',  city:'Washington',   nick:'Nationals'},
+  {id:109, name:'Arizona Diamondbacks',  city:'Arizona',      nick:'Diamondbacks'},
+  {id:144, name:'Atlanta Braves',        city:'Atlanta',      nick:'Braves'},
+  {id:110, name:'Baltimore Orioles',     city:'Baltimore',    nick:'Orioles'},
+  {id:111, name:'Boston Red Sox',        city:'Boston',       nick:'Red Sox'},
+  {id:112, name:'Chicago Cubs',          city:'Chicago',      nick:'Cubs'},
+  {id:145, name:'Chicago White Sox',     city:'Chicago',      nick:'White Sox'},
+  {id:113, name:'Cincinnati Reds',       city:'Cincinnati',   nick:'Reds'},
+  {id:114, name:'Cleveland Guardians',   city:'Cleveland',    nick:'Guardians'},
+  {id:115, name:'Colorado Rockies',      city:'Colorado',     nick:'Rockies'},
+  {id:116, name:'Detroit Tigers',        city:'Detroit',      nick:'Tigers'},
+  {id:117, name:'Houston Astros',        city:'Houston',      nick:'Astros'},
+  {id:118, name:'Kansas City Royals',    city:'Kansas City',  nick:'Royals'},
+  {id:108, name:'Los Angeles Angels',    city:'Los Angeles',  nick:'Angels'},
+  {id:119, name:'Los Angeles Dodgers',   city:'Los Angeles',  nick:'Dodgers'},
+  {id:146, name:'Miami Marlins',         city:'Miami',        nick:'Marlins'},
+  {id:158, name:'Milwaukee Brewers',     city:'Milwaukee',    nick:'Brewers'},
+  {id:142, name:'Minnesota Twins',       city:'Minnesota',    nick:'Twins'},
+  {id:121, name:'New York Mets',         city:'New York',     nick:'Mets'},
+  {id:147, name:'New York Yankees',      city:'New York',     nick:'Yankees'},
+  {id:133, name:'Oakland Athletics',     city:'Oakland',      nick:'Athletics'},
+  {id:143, name:'Philadelphia Phillies', city:'Philadelphia', nick:'Phillies'},
+  {id:134, name:'Pittsburgh Pirates',    city:'Pittsburgh',   nick:'Pirates'},
+  {id:135, name:'San Diego Padres',      city:'San Diego',    nick:'Padres'},
+  {id:137, name:'San Francisco Giants',  city:'San Francisco',nick:'Giants'},
+  {id:136, name:'Seattle Mariners',      city:'Seattle',      nick:'Mariners'},
+  {id:138, name:'St. Louis Cardinals',   city:'St. Louis',    nick:'Cardinals'},
+  {id:139, name:'Tampa Bay Rays',        city:'Tampa Bay',    nick:'Rays'},
+  {id:140, name:'Texas Rangers',         city:'Texas',        nick:'Rangers'},
+  {id:141, name:'Toronto Blue Jays',     city:'Toronto',      nick:'Blue Jays'},
+];
+
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
-const NATS_ID = 120;
+let selectedTeamId = 120;
 const SEASON  = 2026;
 const BASE    = 'https://statsapi.mlb.com/api/v1';
 
@@ -449,17 +499,17 @@ async function loadData() {
   state.window = 'season'; state.last7Data = null;
   document.querySelectorAll('.win-btn').forEach((b,i)=>{ b.classList.toggle('active',i===0); b.disabled=false; });
 
-  const msgs = ['Fetching team batting stats…','Fetching pitching stats…','Fetching Nationals player stats…','Building dashboard…'];
+  const msgs = ['Fetching team batting stats…','Fetching pitching stats…','Fetching player stats…','Building dashboard…'];
   let mi = 0;
   const ticker = setInterval(()=>{ el('load-msg').textContent = msgs[Math.min(++mi,msgs.length-1)]; }, 1800);
   try {
     const [th, tp, nh, np, thf, sched] = await Promise.all([
       mlb(`/teams/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&sportId=1`),
       mlb(`/teams/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&sportId=1`),
-      mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
-      mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${NATS_ID}&sportId=1&playerPool=All&limit=100`),
+      mlb(`/stats?stats=season&group=hitting&gameType=R&season=${SEASON}&teamId=${selectedTeamId}&sportId=1&playerPool=All&limit=100`),
+      mlb(`/stats?stats=season&group=pitching&gameType=R&season=${SEASON}&teamId=${selectedTeamId}&sportId=1&playerPool=All&limit=100`),
       mlb(`/teams/stats?stats=season&group=fielding&gameType=R&season=${SEASON}&sportId=1`),
-      mlb(`/schedule?teamId=${NATS_ID}&season=${SEASON}&gameType=R&sportId=1`),
+      mlb(`/schedule?teamId=${selectedTeamId}&season=${SEASON}&gameType=R&sportId=1`),
     ]);
 
     // extract sorted list of dates where a final game was played
@@ -515,12 +565,12 @@ function renderTeamView() {
   const stats  = state.group === 'hitting' ? HIT_STATS : PITCH_STATS;
   const cfg    = stats.find(s=>s.key===state.stat);
   const avg    = leagueAvg(data, state.stat);
-  const natsRow = data.find(t=>t.team?.id===NATS_ID);
+  const natsRow = data.find(t=>t.team?.id===selectedTeamId);
   const natsVal = natsRow ? parseFloat(natsRow.stat?.[state.stat]) : null;
 
   // sort
   const sorted = [...data]
-    .map(t=>({abbr:teamAbb(t.team?.id), name:t.team?.name||'', val:parseFloat(t.stat?.[state.stat])||0, isNats:t.team?.id===NATS_ID}))
+    .map(t=>({abbr:teamAbb(t.team?.id), name:t.team?.name||'', val:parseFloat(t.stat?.[state.stat])||0, isNats:t.team?.id===selectedTeamId}))
     .filter(t=>t.val>0)
     .sort((a,b)=>cfg?.higher ? b.val-a.val : a.val-b.val);
 
@@ -530,7 +580,7 @@ function renderTeamView() {
   const rankColor = natsRank<=10?'#22c55e':natsRank<=20?'#D4B44A':'#ef4444';
   el('summary-cards').innerHTML = [
     {label:'LEAGUE RANK', val:`#${natsRank||'—'}`, sub:`of ${sorted.length} teams · ${cfg?.desc}`, color:rankColor},
-    {label:'NATIONALS',   val:natsVal!=null?cfg?.fmt(natsVal):'—',  sub:'2026 season to date', color:'#fff'},
+    {label:teamAbb(selectedTeamId), val:natsVal!=null?cfg?.fmt(natsVal):'—',  sub:'2026 season to date', color:'#fff'},
     {label:'LEAGUE AVG',  val:avg?cfg?.fmt(avg):'—',               sub:'30-team mean',         color:'#D4B44A'},
   ].map(c=>`
     <div class="card">
@@ -730,7 +780,7 @@ function renderNote() {
       .map(t => ({ id: t.team?.id, val: parseFloat(t.stat?.[key]) || 0 }))
       .filter(t => t.val > 0)
       .sort((a, b) => higher ? b.val - a.val : a.val - b.val);
-    const idx = sorted.findIndex(t => t.id === NATS_ID);
+    const idx = sorted.findIndex(t => t.id === selectedTeamId);
     return idx >= 0 ? idx + 1 : null;
   }
   function ord(n) {
@@ -744,8 +794,8 @@ function renderNote() {
 
   const offRank  = rankOf(state.teamHit,   'runs', true);
   const eraRank  = rankOf(state.teamPitch, 'era',  false);
-  const natsHit  = state.teamHit.find(t => t.team?.id === NATS_ID);
-  const natsPit  = state.teamPitch.find(t => t.team?.id === NATS_ID);
+  const natsHit  = state.teamHit.find(t => t.team?.id === selectedTeamId);
+  const natsPit  = state.teamPitch.find(t => t.team?.id === selectedTeamId);
 
   const topHitter = [...state.natsHitters]
     .sort((a, b) => parseFloat(b.stat?.ops || 0) - parseFloat(a.stat?.ops || 0))[0];
@@ -757,7 +807,8 @@ function renderNote() {
   const hitterStr  = topHitter  ? ` — led by ${esc(topHitter.player.fullName)} (${esc(topHitter.stat.avg)} AVG, ${esc(topHitter.stat.ops)} OPS)` : '';
   const pitcherStr = topPitcher ? ` — led by ${esc(topPitcher.player.fullName)} (${(+topPitcher.stat.era).toFixed(2)} ERA, ${esc(topPitcher.stat.inningsPitched)} IP)` : '';
 
-  note.innerHTML = `<strong>📊 Nationals context:</strong> `
+  const teamNick = MLB_TEAMS.find(t => t.id === selectedTeamId)?.nick || teamAbb(selectedTeamId);
+  note.innerHTML = `<strong>📊 ${esc(teamNick)} context:</strong> `
     + `Offense ranks <span class="${cls(offRank)}">${ord(offRank)} in runs${runsStr}</span>${hitterStr}. `
     + `Pitching ranks <span class="${cls(eraRank)}">${ord(eraRank)} in ERA${eraStr}</span>${pitcherStr}.`;
 }
@@ -898,6 +949,26 @@ Chart.register({
   }
 });
 
+// ─── TEAM SELECTOR ───────────────────────────────────────────────────────────
+function setTeam(id) {
+  selectedTeamId = id;
+  updateLogoTitle();
+  loadData();
+}
+
+function updateLogoTitle() {
+  const team = MLB_TEAMS.find(t => t.id === selectedTeamId);
+  if (!team) return;
+  el('logo-title').innerHTML = `${esc(team.city)} <span>${esc(team.nick)}</span>`;
+  document.title = `${team.name} Dashboard`;
+}
+
+function populateTeamSelect() {
+  el('team-select').innerHTML = MLB_TEAMS.map(t =>
+    `<option value="${t.id}"${t.id === selectedTeamId ? ' selected' : ''}>${esc(t.name)}</option>`
+  ).join('');
+}
+
 // ─── BOOT ────────────────────────────────────────────────────────────────────
 let resizeTimer;
 window.addEventListener('resize', () => {
@@ -905,6 +976,7 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => renderTeamView(), 150);
 });
 
+populateTeamSelect();
 loadData();
 </script>
 </body>

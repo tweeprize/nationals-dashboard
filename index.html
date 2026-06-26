@@ -559,6 +559,21 @@ let state = {
   pitcherId:null, pitcherGames:[], pitchGamePk:null, pitchChart:null,
 };
 
+// ─── PERSISTENCE ─────────────────────────────────────────────────────────────
+function saveState() {
+  try {
+    localStorage.setItem('mlb_dash', JSON.stringify({
+      teamId:  selectedTeamId,
+      tab:     state.tab,
+      pitcher: state.pitcherId   || 0,
+      gamePk:  state.pitchGamePk || 0,
+    }));
+  } catch {}
+}
+function loadSavedState() {
+  try { return JSON.parse(localStorage.getItem('mlb_dash')) || {}; } catch { return {}; }
+}
+
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function esc(s) {
   return String(s == null ? '—' : s)
@@ -594,8 +609,10 @@ async function mlb(path) {
 }
 
 async function loadData(opts = {}) {
-  const restoreTab    = opts.tab    || 'team';
-  const restoreWindow = opts.window || 'season';
+  const restoreTab     = opts.tab      || 'team';
+  const restoreWindow  = opts.window   || 'season';
+  const restorePitcher = opts.pitcherId || 0;
+  const restoreGame    = opts.gamePk    || 0;
   hide('tab-team'); hide('tab-players'); hide('error-panel'); show('loading');
   state.window = 'season'; state.last7Data = null;
   document.querySelectorAll('.win-btn').forEach((b,i)=>{ b.classList.toggle('active',i===0); b.disabled=false; });
@@ -639,6 +656,7 @@ async function loadData(opts = {}) {
     render();
     switchTab(restoreTab);
     if (restoreWindow === 'last7' && state.schedDates.length >= 7) loadLast7();
+    if (restorePitcher) setPitcher(restorePitcher, restoreGame);
   } catch(e) {
     clearInterval(ticker);
     hide('loading'); show('error-panel');
@@ -827,6 +845,7 @@ function switchTab(t) {
   document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===(t==='team'?0:t==='players'?1:2)));
   hide('tab-team'); hide('tab-players'); hide('tab-pitching');
   show('tab-' + t);
+  saveState();
 }
 
 function setGroup(g) {
@@ -1137,7 +1156,7 @@ function renderPitcherSelect() {
   }
 }
 
-async function setPitcher(id) {
+async function setPitcher(id, hintGamePk = 0) {
   if (!id) {
     state.pitcherId = null; state.pitchGamePk = null;
     const gs = el('game-select');
@@ -1170,8 +1189,13 @@ async function setPitcher(id) {
       return `<option value="${g.game.gamePk}">${date} ${at} ${opp} · ${ip}IP ${k}K ${er}ER</option>`;
     }).join('');
     gs.disabled = false;
-    gs.value = String(games[0].game.gamePk);
-    await setPitcherGame(games[0].game.gamePk);
+    // Use the hinted game if it exists in the list, otherwise default to most recent
+    const target = hintGamePk && games.some(g => g.game.gamePk === hintGamePk)
+      ? hintGamePk
+      : games[0].game.gamePk;
+    gs.value = String(target);
+    saveState();
+    await setPitcherGame(target);
   } catch(e) {
     gs.innerHTML = '<option value="0">Error loading games</option>';
     hide('pitch-loading'); show('pitch-placeholder');
@@ -1193,6 +1217,7 @@ async function setPitcherGame(gamePk) {
     } else {
       renderPitchChart(pitches);
       show('pitch-content');
+      saveState();
     }
   } catch(e) {
     hide('pitch-loading'); show('pitch-placeholder');
@@ -1346,8 +1371,11 @@ function setTeam(id) {
   const savedTab    = state.tab;
   const savedWindow = state.window;
   selectedTeamId = id;
+  state.pitcherId = null;
+  state.pitchGamePk = null;
   updateLogoTitle();
   applyTeamColors(MLB_TEAMS.find(t => t.id === id));
+  saveState();
   loadData({ tab: savedTab, window: savedWindow });
 }
 
@@ -1371,9 +1399,16 @@ window.addEventListener('resize', () => {
   resizeTimer = setTimeout(() => renderTeamView(), 150);
 });
 
+const _saved = loadSavedState();
+if (_saved.teamId && MLB_TEAMS.some(t => t.id === _saved.teamId)) selectedTeamId = _saved.teamId;
 populateTeamSelect();
 applyTeamColors(MLB_TEAMS.find(t => t.id === selectedTeamId));
-loadData();
+updateLogoTitle();
+loadData({
+  tab:       _saved.tab     || 'team',
+  pitcherId: _saved.pitcher || 0,
+  gamePk:    _saved.gamePk  || 0,
+});
 </script>
 </body>
 </html>

@@ -1090,7 +1090,8 @@ Chart.register({
     if (chart !== state.pitchChart) return;
     const {ctx, scales:{x, y}} = chart;
     if (!x || !y || !chart._pitchPoints) return;
-    const SCALE = 1.2, HEAD = 6;
+    // pfxX/pfxZ are in inches; /12 converts to feet, ×0.55 amplifies for visibility
+    const SCALE = 0.55 / 12, HEAD = 6;
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.82)';
     ctx.fillStyle   = 'rgba(255,255,255,0.82)';

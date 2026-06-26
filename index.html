@@ -246,6 +246,23 @@
     padding: 3px 9px; border-radius: 4px; white-space: nowrap;
   }
   .pitch-placeholder { text-align:center; padding:60px 20px; color:var(--muted); font-size:13px; }
+  .pitch-type-legend {
+    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    padding: 10px 14px 6px;
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+  }
+  .pt-item {
+    display: flex; align-items: center; gap: 6px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
+    color: var(--text);
+  }
+  .pt-sym {
+    font-size: 15px; line-height: 1;
+    color: rgba(221,228,240,0.9);
+    min-width: 16px; text-align: center;
+  }
 
   /* ── LOADING / ERROR ─────────────────────────────── */
   .loading {
@@ -402,6 +419,7 @@
         <div class="chart-wrap" style="max-width:520px;margin:0 auto">
           <canvas id="pitchChart"></canvas>
         </div>
+        <div class="pitch-type-legend" id="pitch-type-legend"></div>
       </div>
     </div>
   </div>
@@ -498,6 +516,9 @@ const PLAYER_PITCH_STATS = [
 ];
 
 // ─── PITCH CONSTANTS ─────────────────────────────────────────────────────────
+// Maps Chart.js pointStyle names to unicode for the HTML legend
+const STYLE_GLYPH = {circle:'●', cross:'+', star:'★', triangle:'▲', rectRot:'◆', crossRot:'✕', rect:'■'};
+
 // 7 visually distinct shapes: circle ●, cross +, star ★, triangle △, rectRot ◆, crossRot ×, rect □
 const PITCH_TYPES = {
   FF:{label:'4-Seam FB',   style:'circle'},   // ●
@@ -1060,30 +1081,31 @@ Chart.register({
 });
 
 // ─── PITCH BREAK VECTOR PLUGIN ───────────────────────────────────────────────
-// breakAngle: 0° = up (12-o'clock from catcher's view), clockwise positive
-// breakLength: inches; scaled down ~3× for visual clarity
+// Uses pfxX / pfxZ (feet of movement vs gravity-only path, from pitchData.coordinates).
+// Drawn in afterDraw so arrows appear on top of symbols.
+// Scale 1.2× so movement is easy to see; arrows from plate location point in break direction.
 Chart.register({
   id: 'pitchBreaks',
-  beforeDatasetsDraw(chart) {
+  afterDraw(chart) {
     if (chart !== state.pitchChart) return;
     const {ctx, scales:{x, y}} = chart;
     if (!x || !y || !chart._pitchPoints) return;
-    const HEAD = 5;
+    const SCALE = 1.2, HEAD = 6;
     ctx.save();
+    ctx.strokeStyle = 'rgba(255,255,255,0.82)';
+    ctx.fillStyle   = 'rgba(255,255,255,0.82)';
+    ctx.lineWidth   = 1.8;
+    ctx.setLineDash([]);
     chart._pitchPoints.forEach(p => {
-      if (!p.breakLength || p.breakAngle == null) return;
-      const rad   = p.breakAngle * Math.PI / 180;
-      const bft   = Math.min(p.breakLength, 20) / 50; // inches → scaled chart feet
-      const endX  = p.px + Math.sin(rad) * bft;
-      const endY  = p.pz + Math.cos(rad) * bft;
-      const cx = x.getPixelForValue(p.px),  cy = y.getPixelForValue(p.pz);
-      const ex = x.getPixelForValue(endX),  ey = y.getPixelForValue(endY);
-      const a  = Math.atan2(ey - cy, ex - cx);
-      ctx.strokeStyle = 'rgba(255,255,255,0.72)';
-      ctx.lineWidth   = 1.5;
-      ctx.setLineDash([]);
+      if (p.pfxX == null || p.pfxZ == null) return;
+      const cx = x.getPixelForValue(p.px);
+      const cy = y.getPixelForValue(p.pz);
+      const ex = x.getPixelForValue(p.px + p.pfxX * SCALE);
+      const ey = y.getPixelForValue(p.pz + p.pfxZ * SCALE);
+      const dist = Math.hypot(ex - cx, ey - cy);
+      if (dist < 3) return;
+      const a = Math.atan2(ey - cy, ex - cx);
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.72)';
       ctx.beginPath();
       ctx.moveTo(ex, ey);
       ctx.lineTo(ex - HEAD * Math.cos(a - Math.PI/6), ey - HEAD * Math.sin(a - Math.PI/6));
@@ -1206,8 +1228,8 @@ function extractPitches(playByPlay, pitcherId) {
         outcome,
         szTop: pd?.strikeZoneTop,
         szBottom: pd?.strikeZoneBottom,
-        breakLength: pd?.breaks?.breakLength,
-        breakAngle:  pd?.breaks?.breakAngle,
+        pfxX: pd?.coordinates?.pfxX,
+        pfxZ: pd?.coordinates?.pfxZ,
       });
     }
   }
@@ -1268,22 +1290,7 @@ function renderPitchChart(pitches) {
       maintainAspectRatio: true,
       aspectRatio: 0.88,
       plugins: {
-        legend: {
-          display: true, position: 'bottom',
-          labels: {
-            usePointStyle: true, pointStyleWidth: 14, boxHeight: 12,
-            font: {family:"'Barlow Condensed',sans-serif", size:12},
-            generateLabels: chart => chart.data.datasets.map((ds, i) => ({
-              text: ds.label,
-              pointStyle: ds.pointStyle,
-              fillStyle: 'rgba(221,228,240,0.9)',
-              strokeStyle: 'rgba(0,0,0,0.45)',
-              lineWidth: 1,
-              datasetIndex: i,
-              hidden: !chart.isDatasetVisible(i),
-            })),
-          }
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title: ()=>'',
@@ -1307,10 +1314,16 @@ function renderPitchChart(pitches) {
 
   state.pitchChart._strikeZone  = {top:szTop, bottom:szBot};
   state.pitchChart._pitchPoints = pitches.map(p=>({
-    px:p.px, pz:p.pz, velo:p.velo,
-    breakLength:p.breakLength, breakAngle:p.breakAngle,
+    px:p.px, pz:p.pz, velo:p.velo, pfxX:p.pfxX, pfxZ:p.pfxZ,
   }));
   state.pitchChart.update();
+
+  // HTML pitch-type legend (rendered after chart so typeGroups is in scope)
+  el('pitch-type-legend').innerHTML = Object.entries(typeGroups).map(([type, pts]) => {
+    const cfg = PITCH_TYPES[type] || {label:type, style:'circle'};
+    const glyph = STYLE_GLYPH[cfg.style] || '●';
+    return `<span class="pt-item"><span class="pt-sym">${glyph}</span>${esc(cfg.label)}</span>`;
+  }).join('');
 }
 
 // ─── TEAM SELECTOR ───────────────────────────────────────────────────────────

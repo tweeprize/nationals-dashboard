@@ -238,6 +238,15 @@
   .note .good { color: #22c55e; }
   .note .bad  { color: #ef4444; }
 
+  /* ── OUTCOME CHIPS ─────────────────────────────── */
+  .outcome-legend { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; }
+  .outcome-chip {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+    padding: 3px 9px; border-radius: 4px; white-space: nowrap;
+  }
+  .pitch-placeholder { text-align:center; padding:60px 20px; color:var(--muted); font-size:13px; }
+
   /* ── LOADING / ERROR ─────────────────────────────── */
   .loading {
     display: flex;
@@ -311,6 +320,7 @@
     <div class="tabs">
       <button class="tab-btn active" onclick="switchTab('team')">Team Rankings</button>
       <button class="tab-btn"        onclick="switchTab('players')">Players</button>
+      <button class="tab-btn"        onclick="switchTab('pitching')">Pitching</button>
     </div>
   </div>
 </header>
@@ -366,6 +376,32 @@
       <div class="table-footer">
         <span class="up">▲ Green</span> = above league avg &nbsp;·&nbsp;
         <span class="dn">▼ Red</span> = below &nbsp;·&nbsp; Tap column headers to sort &nbsp;·&nbsp; Min. 20 PA / 5 IP — includes IL players
+      </div>
+    </div>
+  </div>
+
+  <!-- PITCHING TAB -->
+  <div id="tab-pitching" class="hidden">
+    <div class="controls">
+      <select class="team-select" id="pitcher-select" onchange="setPitcher(+this.value||0)" style="min-width:180px">
+        <option value="0">— Select Pitcher —</option>
+      </select>
+      <select class="team-select" id="game-select" onchange="setPitcherGame(+this.value||0)" disabled style="min-width:240px">
+        <option value="0">— Select Game —</option>
+      </select>
+    </div>
+    <div id="pitch-placeholder" class="pitch-placeholder">Select a pitcher above to view pitch locations</div>
+    <div id="pitch-loading" class="loading hidden">
+      <div class="spinner"></div>
+      <div>Loading pitch data…</div>
+    </div>
+    <div id="pitch-content" class="hidden">
+      <div class="outcome-legend" id="pitch-outcome-legend"></div>
+      <div class="chart-box">
+        <div class="chart-label" id="pitch-chart-label"></div>
+        <div class="chart-wrap" style="max-width:520px;margin:0 auto">
+          <canvas id="pitchChart"></canvas>
+        </div>
       </div>
     </div>
   </div>
@@ -461,6 +497,32 @@ const PLAYER_PITCH_STATS = [
   {key:'saves',             label:'SV',   higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
 ];
 
+// ─── PITCH CONSTANTS ─────────────────────────────────────────────────────────
+const PITCH_TYPES = {
+  FF:{label:'4-Seam FB',   style:'circle'},
+  SI:{label:'Sinker',      style:'rectRot'},
+  SL:{label:'Slider',      style:'triangle'},
+  CH:{label:'Changeup',    style:'rect'},
+  CU:{label:'Curveball',   style:'crossRot'},
+  FC:{label:'Cutter',      style:'star'},
+  FS:{label:'Splitter',    style:'cross'},
+  ST:{label:'Sweeper',     style:'rectRounded'},
+  SV:{label:'Slurve',      style:'dash'},
+  KC:{label:'Knuckle-CB',  style:'line'},
+  KN:{label:'Knuckleball', style:'rectRounded'},
+  FA:{label:'Fastball',    style:'circle'},
+  CS:{label:'Slow Curve',  style:'crossRot'},
+};
+const OUTCOMES = {
+  home_run:       {label:'Home Run',      color:'#ef4444'},
+  hit:            {label:'Hit',           color:'#22c55e'},
+  swinging_strike:{label:'Swg Strike',    color:'#f97316'},
+  foul:           {label:'Foul',          color:'#94a3b8'},
+  called_strike:  {label:'Called Strike', color:'#eab308'},
+  in_play_out:    {label:'In Play Out',   color:'rgba(139,92,46,0.8)'},
+  ball:           {label:'Ball',          color:'rgba(100,120,160,0.45)'},
+};
+
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let state = {
   teamHit:[], teamPitch:[],
@@ -471,7 +533,8 @@ let state = {
   last7Data:  null,   // cached last-7 data, null until first fetch
   group:'hitting', stat:'ops',
   playerGroup:'batting', playerSort:'ops', playerSortDir:1,
-  chart:null, tab:'team'
+  chart:null, tab:'team',
+  pitcherId:null, pitcherGames:[], pitchGamePk:null, pitchChart:null,
 };
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -567,6 +630,7 @@ function render() {
   renderTeamView();
   renderPlayerTable();
   renderNote();
+  renderPitcherSelect();
 }
 
 function renderStatButtons() {
@@ -738,8 +802,8 @@ function renderPlayerTable() {
 // ─── INTERACTION ──────────────────────────────────────────────────────────────
 function switchTab(t) {
   state.tab = t;
-  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===(t==='team'?0:1)));
-  hide('tab-team'); hide('tab-players');
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>b.classList.toggle('active',i===(t==='team'?0:t==='players'?1:2)));
+  hide('tab-team'); hide('tab-players'); hide('tab-pitching');
   show('tab-' + t);
 }
 
@@ -961,6 +1025,264 @@ Chart.register({
     ctx.restore();
   }
 });
+
+// ─── STRIKE ZONE PLUGIN ───────────────────────────────────────────────────────
+Chart.register({
+  id: 'strikeZone',
+  afterDraw(chart) {
+    if (chart !== state.pitchChart) return;
+    const {ctx, scales:{x, y}} = chart;
+    if (!x || !y || !chart._strikeZone) return;
+    const {top, bottom} = chart._strikeZone;
+    const x1 = x.getPixelForValue(-0.708), x2 = x.getPixelForValue(0.708);
+    const y1 = y.getPixelForValue(top),    y2 = y.getPixelForValue(bottom);
+    ctx.save();
+    // Strike zone box
+    ctx.strokeStyle = 'rgba(220,228,240,0.65)';
+    ctx.lineWidth = 1.5; ctx.setLineDash([]);
+    ctx.strokeRect(x1, y1, x2-x1, y2-y1);
+    // Inner thirds grid (faint)
+    ctx.strokeStyle = 'rgba(220,228,240,0.15)';
+    ctx.lineWidth = 1;
+    const w=(x2-x1)/3, h=(y2-y1)/3;
+    [1,2].forEach(i=>{
+      ctx.beginPath(); ctx.moveTo(x1+w*i,y1); ctx.lineTo(x1+w*i,y2); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(x1,y1+h*i); ctx.lineTo(x2,y1+h*i); ctx.stroke();
+    });
+    // Home plate marker
+    ctx.strokeStyle = 'rgba(220,228,240,0.3)';
+    ctx.lineWidth = 2; ctx.setLineDash([]);
+    const plateY = y.getPixelForValue(0.15);
+    ctx.beginPath(); ctx.moveTo(x1, plateY); ctx.lineTo(x2, plateY); ctx.stroke();
+    ctx.restore();
+  }
+});
+
+// ─── PITCH VELOCITY LABELS PLUGIN ────────────────────────────────────────────
+Chart.register({
+  id: 'pitchVelo',
+  afterDraw(chart) {
+    if (chart !== state.pitchChart) return;
+    const {ctx, scales:{x, y}} = chart;
+    if (!x || !y || !chart._pitchPoints) return;
+    ctx.save();
+    ctx.font = "bold 8px 'Barlow Condensed', sans-serif";
+    ctx.fillStyle = 'rgba(221,228,240,0.82)';
+    chart._pitchPoints.forEach(p => {
+      if (!p.velo) return;
+      const cx = x.getPixelForValue(p.px);
+      const cy = y.getPixelForValue(p.pz);
+      ctx.fillText(Math.round(p.velo), cx + 9, cy + 3);
+    });
+    ctx.restore();
+  }
+});
+
+// ─── PITCHING TAB ────────────────────────────────────────────────────────────
+function renderPitcherSelect() {
+  const pitchers = [...(state.natsPitchers||[])]
+    .sort((a,b)=>parseFloat(b.stat?.inningsPitched||0)-parseFloat(a.stat?.inningsPitched||0));
+  const sel = el('pitcher-select');
+  sel.innerHTML = '<option value="0">— Select Pitcher —</option>' +
+    pitchers.map(p=>`<option value="${p.player.id}">${esc(p.player.fullName)}</option>`).join('');
+  // Restore selection if pitcher still present, otherwise reset
+  if (state.pitcherId && pitchers.some(p=>p.player.id===state.pitcherId)) {
+    sel.value = String(state.pitcherId);
+  } else {
+    state.pitcherId = null; state.pitchGamePk = null;
+    const gs = el('game-select');
+    gs.innerHTML = '<option value="0">— Select Game —</option>'; gs.disabled = true;
+    show('pitch-placeholder'); hide('pitch-content'); hide('pitch-loading');
+    el('pitch-placeholder').textContent = 'Select a pitcher above to view pitch locations';
+    if (state.pitchChart) { state.pitchChart.destroy(); state.pitchChart = null; }
+  }
+}
+
+async function setPitcher(id) {
+  if (!id) {
+    state.pitcherId = null; state.pitchGamePk = null;
+    const gs = el('game-select');
+    gs.innerHTML = '<option value="0">— Select Game —</option>'; gs.disabled = true;
+    show('pitch-placeholder'); hide('pitch-content'); hide('pitch-loading');
+    el('pitch-placeholder').textContent = 'Select a pitcher above to view pitch locations';
+    return;
+  }
+  state.pitcherId = id;
+  show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content');
+  const gs = el('game-select');
+  gs.innerHTML = '<option value="0">Loading…</option>'; gs.disabled = true;
+  try {
+    const data = await mlb(`/people/${id}/stats?stats=gameLog&season=${SEASON}&group=pitching&gameType=R`);
+    const games = (data.stats?.[0]?.splits||[]).filter(g=>g.game?.gamePk).reverse();
+    state.pitcherGames = games;
+    if (!games.length) {
+      gs.innerHTML = '<option value="0">No appearances yet</option>';
+      hide('pitch-loading'); show('pitch-placeholder');
+      el('pitch-placeholder').textContent = 'No games found for this pitcher.';
+      return;
+    }
+    gs.innerHTML = '<option value="0">— Select Game —</option>' + games.map(g=>{
+      const date = new Date(g.date+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric'});
+      const at   = g.isHome ? 'vs' : '@';
+      const opp  = g.opponent?.abbreviation||'???';
+      const ip   = g.stat?.inningsPitched||'0';
+      const k    = g.stat?.strikeOuts||0;
+      const er   = g.stat?.earnedRuns??'?';
+      return `<option value="${g.game.gamePk}">${date} ${at} ${opp} · ${ip}IP ${k}K ${er}ER</option>`;
+    }).join('');
+    gs.disabled = false;
+    gs.value = String(games[0].game.gamePk);
+    await setPitcherGame(games[0].game.gamePk);
+  } catch(e) {
+    gs.innerHTML = '<option value="0">Error loading games</option>';
+    hide('pitch-loading'); show('pitch-placeholder');
+    el('pitch-placeholder').textContent = 'Error: ' + e.message;
+  }
+}
+
+async function setPitcherGame(gamePk) {
+  if (!gamePk || !state.pitcherId) return;
+  state.pitchGamePk = gamePk;
+  show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content');
+  try {
+    const data = await mlb(`/game/${gamePk}/playByPlay`);
+    const pitches = extractPitches(data, state.pitcherId);
+    hide('pitch-loading');
+    if (!pitches.length) {
+      show('pitch-placeholder');
+      el('pitch-placeholder').textContent = 'No pitch coordinate data found for this game.';
+    } else {
+      renderPitchChart(pitches);
+      show('pitch-content');
+    }
+  } catch(e) {
+    hide('pitch-loading'); show('pitch-placeholder');
+    el('pitch-placeholder').textContent = 'Error: ' + e.message;
+  }
+}
+
+function extractPitches(playByPlay, pitcherId) {
+  const pitches = [];
+  for (const play of playByPlay.allPlays||[]) {
+    if (play.matchup?.pitcher?.id !== pitcherId) continue;
+    const result = play.result?.eventType||'';
+    for (const ev of play.playEvents||[]) {
+      if (!ev.isPitch) continue;
+      const pd = ev.pitchData;
+      const px = pd?.coordinates?.pX, pz = pd?.coordinates?.pZ;
+      if (px==null||pz==null) continue;
+      const code = ev.details?.call?.code||'';
+      let outcome;
+      if      (code==='S'||code==='T')             outcome='swinging_strike';
+      else if (code==='C')                          outcome='called_strike';
+      else if (code==='F'||code==='R')             outcome='foul';
+      else if (code==='X'||code==='D'||code==='E') {
+        if      (result==='home_run')                            outcome='home_run';
+        else if (result==='single'||result==='double'||result==='triple') outcome='hit';
+        else                                                     outcome='in_play_out';
+      }
+      else outcome='ball';
+      pitches.push({
+        px, pz,
+        velo: pd?.startSpeed,
+        type: ev.details?.type?.code||'UN',
+        typeLabel: ev.details?.type?.description||'Unknown',
+        outcome,
+        szTop: pd?.strikeZoneTop,
+        szBottom: pd?.strikeZoneBottom,
+      });
+    }
+  }
+  return pitches;
+}
+
+function renderPitchChart(pitches) {
+  const tc = MLB_TEAMS.find(t=>t.id===selectedTeamId)?.colors||{};
+  const darkRgb = hexToRgb(tc.dark||'#011E62')||{r:1,g:30,b:98};
+  const gridColor = `rgba(${darkRgb.r},${darkRgb.g},${darkRgb.b},0.45)`;
+  const mutedColor = lighten(tc.dark||'#011E62', 0.45);
+
+  // Group by pitch type, preserving pitch index for velocity lookup
+  const typeGroups = {};
+  pitches.forEach(p=>{ if(!typeGroups[p.type]) typeGroups[p.type]=[]; typeGroups[p.type].push(p); });
+
+  const datasets = Object.entries(typeGroups).map(([type,pts])=>{
+    const cfg = PITCH_TYPES[type]||{label:type, style:'circle'};
+    return {
+      label: `${cfg.label} (${pts.length})`,
+      data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome})),
+      pointStyle: cfg.style,
+      pointRadius: 8,
+      pointHoverRadius: 11,
+      backgroundColor: pts.map(p=>OUTCOMES[p.outcome]?.color||'#888'),
+      borderColor: 'rgba(0,0,0,0.35)',
+      borderWidth: 1,
+      showLine: false,
+    };
+  });
+
+  // Outcome chips
+  const counts = {};
+  pitches.forEach(p=>{ counts[p.outcome]=(counts[p.outcome]||0)+1; });
+  el('pitch-outcome-legend').innerHTML = Object.entries(OUTCOMES)
+    .filter(([k])=>counts[k])
+    .map(([k,v])=>{
+      const dark = k==='called_strike'||k==='foul';
+      return `<span class="outcome-chip" style="background:${v.color};color:${dark?'#111':'#fff'}">${v.label} <strong>${counts[k]}</strong></span>`;
+    }).join('');
+
+  // Average strike zone
+  const tops = pitches.filter(p=>p.szTop).map(p=>p.szTop);
+  const bots = pitches.filter(p=>p.szBottom).map(p=>p.szBottom);
+  const szTop = tops.length ? tops.reduce((a,b)=>a+b)/tops.length : 3.5;
+  const szBot = bots.length ? bots.reduce((a,b)=>a+b)/bots.length : 1.5;
+
+  el('pitch-chart-label').textContent = `PITCH LOCATIONS · ${pitches.length} PITCHES · FROM CATCHER'S VIEW`;
+
+  const canvas = el('pitchChart');
+  if (state.pitchChart) { state.pitchChart.destroy(); state.pitchChart = null; }
+
+  state.pitchChart = new Chart(canvas, {
+    type: 'scatter',
+    data: {datasets},
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 0.88,
+      plugins: {
+        legend: {
+          display: true, position: 'bottom',
+          labels: {
+            color: '#dde4f0', usePointStyle: true, pointStyleWidth: 14,
+            font: {family:"'Barlow Condensed',sans-serif", size:12},
+            boxHeight: 12,
+          }
+        },
+        tooltip: {
+          callbacks: {
+            title: ()=>'',
+            label: ctx=>{
+              const pt=ctx.raw;
+              const vel=pt.velo?`${Math.round(pt.velo)} mph  `:'';
+              return `${vel}${pt.typeLabel} — ${OUTCOMES[pt.outcome]?.label||pt.outcome}`;
+            }
+          },
+          backgroundColor: darken(tc.dark||'#011E62',0.4),
+          borderColor: lighten(tc.dark||'#011E62',0.1),
+          borderWidth:1, titleColor:'#dde4f0', bodyColor:'#dde4f0',
+        }
+      },
+      scales: {
+        x:{min:-2.5, max:2.5, ticks:{color:mutedColor,font:{size:9},stepSize:0.5}, grid:{color:gridColor}},
+        y:{min:0,   max:5.5, ticks:{color:mutedColor,font:{size:9},stepSize:0.5}, grid:{color:gridColor}},
+      }
+    }
+  });
+
+  state.pitchChart._strikeZone   = {top:szTop, bottom:szBot};
+  state.pitchChart._pitchPoints  = pitches.map(p=>({px:p.px, pz:p.pz, velo:p.velo}));
+  state.pitchChart.update();
+}
 
 // ─── TEAM SELECTOR ───────────────────────────────────────────────────────────
 function applyTeamColors(team) {

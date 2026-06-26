@@ -517,23 +517,24 @@ const PLAYER_PITCH_STATS = [
 
 // ─── PITCH CONSTANTS ─────────────────────────────────────────────────────────
 // Maps Chart.js pointStyle names to unicode for the HTML legend
-const STYLE_GLYPH = {circle:'●', cross:'+', star:'★', triangle:'▲', rectRot:'◆', crossRot:'✕', rect:'■'};
+// rect=■ (sharp square)  rectRounded=□ (rounded square, visually distinct)
+const STYLE_GLYPH = {circle:'●', star:'★', triangle:'▲', rectRot:'◆', rect:'■', rectRounded:'□', crossRot:'✕'};
 
-// 7 visually distinct shapes: circle ●, cross +, star ★, triangle △, rectRot ◆, crossRot ×, rect □
+// All common pitches use filled shapes; crossRot (×) reserved for rare types
 const PITCH_TYPES = {
-  FF:{label:'4-Seam FB',   style:'circle'},   // ●
-  FA:{label:'Fastball',    style:'circle'},   // ●
-  SI:{label:'Sinker',      style:'cross'},    // +
-  FC:{label:'Cutter',      style:'star'},     // ★
-  SL:{label:'Slider',      style:'triangle'}, // △
-  ST:{label:'Sweeper',     style:'triangle'}, // △
-  CU:{label:'Curveball',   style:'rectRot'},  // ◆
-  KC:{label:'Knuckle-CB',  style:'rectRot'},  // ◆
-  CS:{label:'Slow Curve',  style:'rectRot'},  // ◆
-  CH:{label:'Changeup',    style:'crossRot'}, // ×
-  SV:{label:'Slurve',      style:'crossRot'}, // ×
-  FS:{label:'Splitter',    style:'rect'},     // □
-  KN:{label:'Knuckleball', style:'rect'},     // □
+  FF:{label:'4-Seam FB',   style:'circle'},       // ● filled
+  FA:{label:'Fastball',    style:'circle'},        // ● filled
+  SI:{label:'Sinker',      style:'rectRounded'},   // □ filled rounded square
+  FC:{label:'Cutter',      style:'star'},          // ★ filled
+  SL:{label:'Slider',      style:'triangle'},      // △ filled
+  ST:{label:'Sweeper',     style:'triangle'},      // △ filled
+  CU:{label:'Curveball',   style:'rectRot'},       // ◆ filled diamond
+  KC:{label:'Knuckle-CB',  style:'rectRot'},       // ◆ filled diamond
+  CS:{label:'Slow Curve',  style:'rectRot'},       // ◆ filled diamond
+  CH:{label:'Changeup',    style:'rect'},          // ■ filled sharp square
+  SV:{label:'Slurve',      style:'rect'},          // ■ filled sharp square
+  FS:{label:'Splitter',    style:'crossRot'},      // ✕ outlined (rare)
+  KN:{label:'Knuckleball', style:'crossRot'},      // ✕ outlined (rare)
 };
 const OUTCOMES = {
   home_run:       {label:'Home Run',      color:'#ef4444'},
@@ -1281,8 +1282,8 @@ function renderPitchChart(pitches) {
       pointRadius: 8,
       pointHoverRadius: 11,
       backgroundColor: pts.map(p=>OUTCOMES[p.outcome]?.color||'#888'),
-      borderColor: 'rgba(0,0,0,0.35)',
-      borderWidth: 1,
+      borderColor: 'rgba(255,255,255,0.5)',
+      borderWidth: 1.5,
       showLine: false,
     };
   });

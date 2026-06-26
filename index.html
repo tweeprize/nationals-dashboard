@@ -498,20 +498,21 @@ const PLAYER_PITCH_STATS = [
 ];
 
 // ─── PITCH CONSTANTS ─────────────────────────────────────────────────────────
+// 7 visually distinct shapes: circle ●, cross +, star ★, triangle △, rectRot ◆, crossRot ×, rect □
 const PITCH_TYPES = {
-  FF:{label:'4-Seam FB',   style:'circle'},
-  SI:{label:'Sinker',      style:'rectRot'},
-  SL:{label:'Slider',      style:'triangle'},
-  CH:{label:'Changeup',    style:'rect'},
-  CU:{label:'Curveball',   style:'crossRot'},
-  FC:{label:'Cutter',      style:'star'},
-  FS:{label:'Splitter',    style:'cross'},
-  ST:{label:'Sweeper',     style:'rectRounded'},
-  SV:{label:'Slurve',      style:'dash'},
-  KC:{label:'Knuckle-CB',  style:'line'},
-  KN:{label:'Knuckleball', style:'rectRounded'},
-  FA:{label:'Fastball',    style:'circle'},
-  CS:{label:'Slow Curve',  style:'crossRot'},
+  FF:{label:'4-Seam FB',   style:'circle'},   // ●
+  FA:{label:'Fastball',    style:'circle'},   // ●
+  SI:{label:'Sinker',      style:'cross'},    // +
+  FC:{label:'Cutter',      style:'star'},     // ★
+  SL:{label:'Slider',      style:'triangle'}, // △
+  ST:{label:'Sweeper',     style:'triangle'}, // △
+  CU:{label:'Curveball',   style:'rectRot'},  // ◆
+  KC:{label:'Knuckle-CB',  style:'rectRot'},  // ◆
+  CS:{label:'Slow Curve',  style:'rectRot'},  // ◆
+  CH:{label:'Changeup',    style:'crossRot'}, // ×
+  SV:{label:'Slurve',      style:'crossRot'}, // ×
+  FS:{label:'Splitter',    style:'rect'},     // □
+  KN:{label:'Knuckleball', style:'rect'},     // □
 };
 const OUTCOMES = {
   home_run:       {label:'Home Run',      color:'#ef4444'},
@@ -1058,21 +1059,36 @@ Chart.register({
   }
 });
 
-// ─── PITCH VELOCITY LABELS PLUGIN ────────────────────────────────────────────
+// ─── PITCH BREAK VECTOR PLUGIN ───────────────────────────────────────────────
+// breakAngle: 0° = up (12-o'clock from catcher's view), clockwise positive
+// breakLength: inches; scaled down ~3× for visual clarity
 Chart.register({
-  id: 'pitchVelo',
-  afterDraw(chart) {
+  id: 'pitchBreaks',
+  beforeDatasetsDraw(chart) {
     if (chart !== state.pitchChart) return;
     const {ctx, scales:{x, y}} = chart;
     if (!x || !y || !chart._pitchPoints) return;
+    const HEAD = 5;
     ctx.save();
-    ctx.font = "bold 8px 'Barlow Condensed', sans-serif";
-    ctx.fillStyle = 'rgba(221,228,240,0.82)';
     chart._pitchPoints.forEach(p => {
-      if (!p.velo) return;
-      const cx = x.getPixelForValue(p.px);
-      const cy = y.getPixelForValue(p.pz);
-      ctx.fillText(Math.round(p.velo), cx + 9, cy + 3);
+      if (!p.breakLength || p.breakAngle == null) return;
+      const rad   = p.breakAngle * Math.PI / 180;
+      const bft   = Math.min(p.breakLength, 20) / 50; // inches → scaled chart feet
+      const endX  = p.px + Math.sin(rad) * bft;
+      const endY  = p.pz + Math.cos(rad) * bft;
+      const cx = x.getPixelForValue(p.px),  cy = y.getPixelForValue(p.pz);
+      const ex = x.getPixelForValue(endX),  ey = y.getPixelForValue(endY);
+      const a  = Math.atan2(ey - cy, ex - cx);
+      ctx.strokeStyle = 'rgba(255,255,255,0.72)';
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([]);
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(ex, ey); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.72)';
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - HEAD * Math.cos(a - Math.PI/6), ey - HEAD * Math.sin(a - Math.PI/6));
+      ctx.lineTo(ex - HEAD * Math.cos(a + Math.PI/6), ey - HEAD * Math.sin(a + Math.PI/6));
+      ctx.closePath(); ctx.fill();
     });
     ctx.restore();
   }
@@ -1190,6 +1206,8 @@ function extractPitches(playByPlay, pitcherId) {
         outcome,
         szTop: pd?.strikeZoneTop,
         szBottom: pd?.strikeZoneBottom,
+        breakLength: pd?.breaks?.breakLength,
+        breakAngle:  pd?.breaks?.breakAngle,
       });
     }
   }
@@ -1209,7 +1227,7 @@ function renderPitchChart(pitches) {
   const datasets = Object.entries(typeGroups).map(([type,pts])=>{
     const cfg = PITCH_TYPES[type]||{label:type, style:'circle'};
     return {
-      label: `${cfg.label} (${pts.length})`,
+      label: cfg.label,
       data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome})),
       pointStyle: cfg.style,
       pointRadius: 8,
@@ -1253,9 +1271,17 @@ function renderPitchChart(pitches) {
         legend: {
           display: true, position: 'bottom',
           labels: {
-            color: '#dde4f0', usePointStyle: true, pointStyleWidth: 14,
+            usePointStyle: true, pointStyleWidth: 14, boxHeight: 12,
             font: {family:"'Barlow Condensed',sans-serif", size:12},
-            boxHeight: 12,
+            generateLabels: chart => chart.data.datasets.map((ds, i) => ({
+              text: ds.label,
+              pointStyle: ds.pointStyle,
+              fillStyle: 'rgba(221,228,240,0.9)',
+              strokeStyle: 'rgba(0,0,0,0.45)',
+              lineWidth: 1,
+              datasetIndex: i,
+              hidden: !chart.isDatasetVisible(i),
+            })),
           }
         },
         tooltip: {
@@ -1279,8 +1305,11 @@ function renderPitchChart(pitches) {
     }
   });
 
-  state.pitchChart._strikeZone   = {top:szTop, bottom:szBot};
-  state.pitchChart._pitchPoints  = pitches.map(p=>({px:p.px, pz:p.pz, velo:p.velo}));
+  state.pitchChart._strikeZone  = {top:szTop, bottom:szBot};
+  state.pitchChart._pitchPoints = pitches.map(p=>({
+    px:p.px, pz:p.pz, velo:p.velo,
+    breakLength:p.breakLength, breakAngle:p.breakAngle,
+  }));
   state.pitchChart.update();
 }
 

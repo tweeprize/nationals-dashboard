@@ -247,7 +247,7 @@
   }
   .pitch-placeholder { text-align:center; padding:60px 20px; color:var(--muted); font-size:13px; }
   .pitch-type-legend {
-    display: flex; flex-wrap: wrap; gap: 6px 18px;
+    display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: center;
     padding: 10px 14px 6px;
     border-top: 1px solid var(--border);
     margin-top: 4px;
@@ -257,12 +257,27 @@
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 13px; font-weight: 700; letter-spacing: 0.5px;
     color: var(--text);
+    cursor: pointer; user-select: none;
+    transition: opacity .15s;
   }
+  .pt-item:hover { opacity: 0.75; }
   .pt-sym {
     font-size: 15px; line-height: 1;
     color: rgba(221,228,240,0.9);
     min-width: 16px; text-align: center;
   }
+  .pt-dim { opacity: 0.25; }
+  .outcome-chip { cursor: pointer; user-select: none; transition: opacity .15s; }
+  .outcome-chip:hover { opacity: 0.8; }
+  .oc-dim { opacity: 0.25; }
+  .filter-all {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 12px; font-weight: 700; letter-spacing: 1px;
+    padding: 3px 10px; border-radius: 4px; cursor: pointer; user-select: none;
+    border: 1px solid var(--gold); color: var(--gold); background: transparent;
+    transition: all .15s; white-space: nowrap;
+  }
+  .filter-all:hover, .filter-all.f-active { background: var(--gold); color: var(--navy); }
 
   /* ── LOADING / ERROR ─────────────────────────────── */
   .loading {
@@ -558,6 +573,7 @@ let state = {
   playerGroup:'batting', playerSort:'ops', playerSortDir:1,
   chart:null, tab:'team',
   pitcherId:null, pitcherGames:[], pitchGamePk:null, pitchChart:null,
+  pitchData:[], pitchTypeFilter:null, pitchOutcomeFilter:null,
 };
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
@@ -1216,6 +1232,9 @@ async function setPitcherGame(gamePk) {
       show('pitch-placeholder');
       el('pitch-placeholder').textContent = 'No pitch coordinate data found for this game.';
     } else {
+      state.pitchData = pitches;
+      state.pitchTypeFilter = null;
+      state.pitchOutcomeFilter = null;
       renderPitchChart(pitches);
       show('pitch-content');
       saveState();
@@ -1277,7 +1296,7 @@ function renderPitchChart(pitches) {
     const cfg = PITCH_TYPES[type]||{label:type, style:'circle'};
     return {
       label: cfg.label,
-      data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome})),
+      data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome, pfxX:p.pfxX, pfxZ:p.pfxZ})),
       pointStyle: cfg.style,
       pointRadius: 8,
       pointHoverRadius: 11,
@@ -1288,15 +1307,19 @@ function renderPitchChart(pitches) {
     };
   });
 
-  // Outcome chips
-  const counts = {};
-  pitches.forEach(p=>{ counts[p.outcome]=(counts[p.outcome]||0)+1; });
-  el('pitch-outcome-legend').innerHTML = Object.entries(OUTCOMES)
-    .filter(([k])=>counts[k])
-    .map(([k,v])=>{
-      const dark = k==='called_strike'||k==='foul';
-      return `<span class="outcome-chip" style="background:${v.color};color:${dark?'#111':'#fff'}">${v.label} <strong>${counts[k]}</strong></span>`;
-    }).join('');
+  // Outcome chips — always built from full pitch data so all outcomes stay visible
+  const allCounts = {};
+  state.pitchData.forEach(p=>{ allCounts[p.outcome]=(allCounts[p.outcome]||0)+1; });
+  const ocFiltered = state.pitchOutcomeFilter !== null;
+  el('pitch-outcome-legend').innerHTML =
+    `<span class="filter-all${ocFiltered?'':' f-active'}" onclick="resetOutcomeFilter()">All</span>` +
+    Object.entries(OUTCOMES)
+      .filter(([k])=>allCounts[k])
+      .map(([k,v])=>{
+        const dark = k==='called_strike'||k==='foul';
+        const dim  = ocFiltered && !state.pitchOutcomeFilter.has(k) ? ' oc-dim' : '';
+        return `<span class="outcome-chip${dim}" style="background:${v.color};color:${dark?'#111':'#fff'}" onclick="togglePitchOutcome('${k}')">${v.label} <strong>${allCounts[k]}</strong></span>`;
+      }).join('');
 
   // Average strike zone
   const tops = pitches.filter(p=>p.szTop).map(p=>p.szTop);
@@ -1304,7 +1327,10 @@ function renderPitchChart(pitches) {
   const szTop = tops.length ? tops.reduce((a,b)=>a+b)/tops.length : 3.5;
   const szBot = bots.length ? bots.reduce((a,b)=>a+b)/bots.length : 1.5;
 
-  el('pitch-chart-label').textContent = `PITCH LOCATIONS · ${pitches.length} PITCHES · FROM CATCHER'S VIEW`;
+  const totalPitches = state.pitchData.length;
+  const shownPitches = pitches.length;
+  const pitchCountStr = shownPitches < totalPitches ? `${shownPitches} OF ${totalPitches}` : `${totalPitches}`;
+  el('pitch-chart-label').textContent = `PITCH LOCATIONS · ${pitchCountStr} PITCHES · FROM CATCHER'S VIEW`;
 
   const canvas = el('pitchChart');
   if (state.pitchChart) { state.pitchChart.destroy(); state.pitchChart = null; }
@@ -1322,9 +1348,11 @@ function renderPitchChart(pitches) {
           callbacks: {
             title: ()=>'',
             label: ctx=>{
-              const pt=ctx.raw;
-              const vel=pt.velo?`${Math.round(pt.velo)} mph  `:'';
-              return `${vel}${pt.typeLabel} — ${OUTCOMES[pt.outcome]?.label||pt.outcome}`;
+              const pt  = ctx.raw;
+              const vel = pt.velo ? `${Math.round(pt.velo)} mph` : '';
+              const hb  = pt.pfxX != null ? `  H ${pt.pfxX>0?'+':''}${pt.pfxX.toFixed(1)}"` : '';
+              const vb  = pt.pfxZ != null ? `  V ${pt.pfxZ>0?'+':''}${pt.pfxZ.toFixed(1)}"` : '';
+              return `${vel}  ${pt.typeLabel} — ${OUTCOMES[pt.outcome]?.label||pt.outcome}${hb}${vb}`;
             }
           },
           backgroundColor: darken(tc.dark||'#011E62',0.4),
@@ -1345,13 +1373,57 @@ function renderPitchChart(pitches) {
   }));
   state.pitchChart.update();
 
-  // HTML pitch-type legend (rendered after chart so typeGroups is in scope)
-  el('pitch-type-legend').innerHTML = Object.entries(typeGroups).map(([type, pts]) => {
-    const cfg = PITCH_TYPES[type] || {label:type, style:'circle'};
-    const glyph = STYLE_GLYPH[cfg.style] || '●';
-    return `<span class="pt-item"><span class="pt-sym">${glyph}</span>${esc(cfg.label)}</span>`;
-  }).join('');
+  // HTML pitch-type legend — built from full pitch data so all types stay visible
+  const allTypeGroups = {};
+  state.pitchData.forEach(p=>{ if(!allTypeGroups[p.type]) allTypeGroups[p.type]=[]; allTypeGroups[p.type].push(p); });
+  const typeFiltered = state.pitchTypeFilter !== null;
+  el('pitch-type-legend').innerHTML =
+    `<span class="filter-all${typeFiltered?'':' f-active'}" onclick="resetTypeFilter()">All</span>` +
+    Object.entries(allTypeGroups).map(([type]) => {
+      const cfg = PITCH_TYPES[type] || {label:type, style:'circle'};
+      const glyph = STYLE_GLYPH[cfg.style] || '●';
+      const dim = typeFiltered && !state.pitchTypeFilter.has(type) ? ' pt-dim' : '';
+      return `<span class="pt-item${dim}" onclick="togglePitchType('${type}')"><span class="pt-sym">${glyph}</span>${esc(cfg.label)}</span>`;
+    }).join('');
 }
+
+// ─── PITCH FILTERS ───────────────────────────────────────────────────────────
+function getFilteredPitches() {
+  return state.pitchData.filter(p => {
+    const typeOk    = !state.pitchTypeFilter    || state.pitchTypeFilter.has(p.type);
+    const outcomeOk = !state.pitchOutcomeFilter || state.pitchOutcomeFilter.has(p.outcome);
+    return typeOk && outcomeOk;
+  });
+}
+
+function togglePitchType(type) {
+  if (!state.pitchData.length) return;
+  const allTypes = [...new Set(state.pitchData.map(p => p.type))];
+  if (!state.pitchTypeFilter) {
+    state.pitchTypeFilter = new Set([type]);         // isolate one
+  } else {
+    const f = new Set(state.pitchTypeFilter);
+    f.has(type) ? f.delete(type) : f.add(type);
+    state.pitchTypeFilter = (!f.size || allTypes.every(t => f.has(t))) ? null : f;
+  }
+  renderPitchChart(getFilteredPitches());
+}
+
+function togglePitchOutcome(outcome) {
+  if (!state.pitchData.length) return;
+  const allOutcomes = [...new Set(state.pitchData.map(p => p.outcome))];
+  if (!state.pitchOutcomeFilter) {
+    state.pitchOutcomeFilter = new Set([outcome]);   // isolate one
+  } else {
+    const f = new Set(state.pitchOutcomeFilter);
+    f.has(outcome) ? f.delete(outcome) : f.add(outcome);
+    state.pitchOutcomeFilter = (!f.size || allOutcomes.every(o => f.has(o))) ? null : f;
+  }
+  renderPitchChart(getFilteredPitches());
+}
+
+function resetTypeFilter()    { state.pitchTypeFilter    = null; renderPitchChart(getFilteredPitches()); }
+function resetOutcomeFilter() { state.pitchOutcomeFilter = null; renderPitchChart(getFilteredPitches()); }
 
 // ─── TEAM SELECTOR ───────────────────────────────────────────────────────────
 function applyTeamColors(team) {

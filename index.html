@@ -97,6 +97,15 @@
 
   /* ── TABS ─────────────────────────────── */
   .tabs { display: flex; gap: 6px; }
+  .refresh-btn {
+    background: none; border: 1px solid rgba(221,228,240,0.25); color: var(--text);
+    border-radius: 50%; width: 32px; height: 32px; flex-shrink: 0;
+    cursor: pointer; font-size: 18px; line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: border-color .15s, color .15s; touch-action: manipulation;
+  }
+  .refresh-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .refresh-btn.spinning { animation: spin .8s linear infinite; pointer-events: none; }
   .tab-btn {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 13px;
@@ -259,6 +268,7 @@
     color: var(--text);
     cursor: pointer; user-select: none;
     transition: opacity .15s;
+    background: none; border: none; padding: 0; touch-action: manipulation;
   }
   .pt-item:hover { opacity: 0.75; }
   .pt-sym {
@@ -267,7 +277,10 @@
     min-width: 16px; text-align: center;
   }
   .pt-dim { opacity: 0.25; }
-  .outcome-chip { cursor: pointer; user-select: none; transition: opacity .15s; }
+  .outcome-chip {
+    cursor: pointer; user-select: none; transition: opacity .15s;
+    border: none; touch-action: manipulation;
+  }
   .outcome-chip:hover { opacity: 0.8; }
   .oc-dim { opacity: 0.25; }
   .filter-all {
@@ -275,7 +288,7 @@
     font-size: 12px; font-weight: 700; letter-spacing: 1px;
     padding: 3px 10px; border-radius: 4px; cursor: pointer; user-select: none;
     border: 1px solid var(--gold); color: var(--gold); background: transparent;
-    transition: all .15s; white-space: nowrap;
+    transition: all .15s; white-space: nowrap; touch-action: manipulation;
   }
   .filter-all:hover, .filter-all.f-active { background: var(--gold); color: var(--navy); }
 
@@ -354,6 +367,7 @@
       <button class="tab-btn"        onclick="switchTab('players')">Players</button>
       <button class="tab-btn"        onclick="switchTab('pitching')">Pitching</button>
     </div>
+    <button class="refresh-btn" id="refresh-btn" onclick="refreshData()" title="Refresh data">↺</button>
   </div>
 </header>
 
@@ -1312,13 +1326,13 @@ function renderPitchChart(pitches) {
   state.pitchData.forEach(p=>{ allCounts[p.outcome]=(allCounts[p.outcome]||0)+1; });
   const ocFiltered = state.pitchOutcomeFilter !== null;
   el('pitch-outcome-legend').innerHTML =
-    `<span class="filter-all${ocFiltered?'':' f-active'}" onclick="resetOutcomeFilter()">All</span>` +
+    `<button class="filter-all${ocFiltered?'':' f-active'}" onclick="resetOutcomeFilter()">All <strong>${state.pitchData.length}</strong></button>` +
     Object.entries(OUTCOMES)
       .filter(([k])=>allCounts[k])
       .map(([k,v])=>{
         const dark = k==='called_strike'||k==='foul';
         const dim  = ocFiltered && !state.pitchOutcomeFilter.has(k) ? ' oc-dim' : '';
-        return `<span class="outcome-chip${dim}" style="background:${v.color};color:${dark?'#111':'#fff'}" onclick="togglePitchOutcome('${k}')">${v.label} <strong>${allCounts[k]}</strong></span>`;
+        return `<button class="outcome-chip${dim}" style="background:${v.color};color:${dark?'#111':'#fff'}" onclick="togglePitchOutcome('${k}')">${v.label} <strong>${allCounts[k]}</strong></button>`;
       }).join('');
 
   // Average strike zone
@@ -1378,12 +1392,12 @@ function renderPitchChart(pitches) {
   state.pitchData.forEach(p=>{ if(!allTypeGroups[p.type]) allTypeGroups[p.type]=[]; allTypeGroups[p.type].push(p); });
   const typeFiltered = state.pitchTypeFilter !== null;
   el('pitch-type-legend').innerHTML =
-    `<span class="filter-all${typeFiltered?'':' f-active'}" onclick="resetTypeFilter()">All</span>` +
+    `<button class="filter-all${typeFiltered?'':' f-active'}" onclick="resetTypeFilter()">All <strong>${state.pitchData.length}</strong></button>` +
     Object.entries(allTypeGroups).map(([type]) => {
       const cfg = PITCH_TYPES[type] || {label:type, style:'circle'};
       const glyph = STYLE_GLYPH[cfg.style] || '●';
       const dim = typeFiltered && !state.pitchTypeFilter.has(type) ? ' pt-dim' : '';
-      return `<span class="pt-item${dim}" onclick="togglePitchType('${type}')"><span class="pt-sym">${glyph}</span>${esc(cfg.label)}</span>`;
+      return `<button class="pt-item${dim}" onclick="togglePitchType('${type}')"><span class="pt-sym">${glyph}</span>${esc(cfg.label)} <strong>${allTypeGroups[type].length}</strong></button>`;
     }).join('');
 }
 
@@ -1398,9 +1412,10 @@ function getFilteredPitches() {
 
 function togglePitchType(type) {
   if (!state.pitchData.length) return;
+  state.pitchOutcomeFilter = null;
   const allTypes = [...new Set(state.pitchData.map(p => p.type))];
   if (!state.pitchTypeFilter) {
-    state.pitchTypeFilter = new Set([type]);         // isolate one
+    state.pitchTypeFilter = new Set([type]);
   } else {
     const f = new Set(state.pitchTypeFilter);
     f.has(type) ? f.delete(type) : f.add(type);
@@ -1411,9 +1426,10 @@ function togglePitchType(type) {
 
 function togglePitchOutcome(outcome) {
   if (!state.pitchData.length) return;
+  state.pitchTypeFilter = null;
   const allOutcomes = [...new Set(state.pitchData.map(p => p.outcome))];
   if (!state.pitchOutcomeFilter) {
-    state.pitchOutcomeFilter = new Set([outcome]);   // isolate one
+    state.pitchOutcomeFilter = new Set([outcome]);
   } else {
     const f = new Set(state.pitchOutcomeFilter);
     f.has(outcome) ? f.delete(outcome) : f.add(outcome);
@@ -1424,6 +1440,24 @@ function togglePitchOutcome(outcome) {
 
 function resetTypeFilter()    { state.pitchTypeFilter    = null; renderPitchChart(getFilteredPitches()); }
 function resetOutcomeFilter() { state.pitchOutcomeFilter = null; renderPitchChart(getFilteredPitches()); }
+
+// ─── REFRESH ─────────────────────────────────────────────────────────────────
+async function refreshData() {
+  const btn = el('refresh-btn');
+  btn.classList.add('spinning');
+  try {
+    if (state.tab === 'pitching' && state.pitchGamePk) {
+      await setPitcherGame(state.pitchGamePk);
+    } else if (state.tab === 'pitching' && state.pitcherId) {
+      await setPitcher(state.pitcherId);
+    } else {
+      await loadData({ tab: state.tab, window: state.window,
+                       pitcherId: state.pitcherId, gamePk: state.pitchGamePk });
+    }
+  } finally {
+    btn.classList.remove('spinning');
+  }
+}
 
 // ─── TEAM SELECTOR ───────────────────────────────────────────────────────────
 function applyTeamColors(team) {

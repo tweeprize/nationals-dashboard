@@ -435,6 +435,10 @@
       <select class="team-select" id="game-select" onchange="setPitcherGame(+this.value||0)" disabled style="min-width:240px">
         <option value="0">— Select Game —</option>
       </select>
+      <div class="win-toggle hidden" id="pitch-inning-toggle">
+        <button class="win-btn active" onclick="setInningFilter(false)">Full Game</button>
+        <button class="win-btn" id="inning-toggle-btn" onclick="setInningFilter(true)">Current Inning</button>
+      </div>
     </div>
     <div id="pitch-placeholder" class="pitch-placeholder">Select a pitcher above to view pitch locations</div>
     <div id="pitch-loading" class="loading hidden">
@@ -587,7 +591,8 @@ let state = {
   playerGroup:'batting', playerSort:'ops', playerSortDir:1,
   chart:null, tab:'team',
   pitcherId:null, pitcherGames:[], pitchGamePk:null, pitchChart:null,
-  pitchData:[], pitchTypeFilter:null, pitchOutcomeFilter:null,
+  pitchData:[], pitchTypeFilter:null, pitchOutcomeFilter:null, pitchInningFilter:false,
+  currentOpponentId:null, currentPitcherId:null,
 };
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
@@ -618,6 +623,10 @@ function leagueAvg(data, key) { return mean(data.map(t=>t.stat?.[key])); }
 function el(id) { return document.getElementById(id); }
 function show(id) { el(id).classList.remove('hidden'); }
 function hide(id) { el(id).classList.add('hidden'); }
+function ordinal(n) {
+  const v = n % 100;
+  return n + (['th','st','nd','rd'][(v-20)%10] || ['th','st','nd','rd'][v] || 'th');
+}
 
 function hexToRgb(hex) {
   const r = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
@@ -637,6 +646,39 @@ async function mlb(path) {
   const r = await fetch(BASE + path);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
+}
+async function mlbLive(gamePk) {
+  const r = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.json();
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// Finds the selected team's opponent for today's game (or nearest scheduled game
+// if there's an off day), plus today's gamePk if a game is actually scheduled today.
+function findScheduleContext(sched, teamId) {
+  const today = todayStr();
+  const games = [];
+  for (const d of sched.dates || []) {
+    for (const g of d.games || []) {
+      const home = g.teams?.home?.team?.id, away = g.teams?.away?.team?.id;
+      if (home !== teamId && away !== teamId) continue;
+      const oppId = home === teamId ? away : home;
+      if (oppId) games.push({date: d.date, oppId, gamePk: g.gamePk});
+    }
+  }
+  const todays = games.find(g => g.date === today);
+  if (todays) return {opponentId: todays.oppId, todaysGamePk: todays.gamePk};
+  if (!games.length) return {opponentId: null, todaysGamePk: null};
+  const nearest = games.reduce((best, g) => {
+    const diff = Math.abs(new Date(g.date) - new Date(today));
+    return diff < best.diff ? {diff, g} : best;
+  }, {diff: Infinity, g: null}).g;
+  return {opponentId: nearest?.oppId ?? null, todaysGamePk: null};
 }
 
 async function loadData(opts = {}) {
@@ -668,6 +710,26 @@ async function loadData(opts = {}) {
         if (g.status?.abstractGameState === 'Final') dateSet.add(d.date);
     state.schedDates = [...dateSet].sort();
     document.querySelector('.win-btn:last-child').disabled = state.schedDates.length < 7;
+
+    // Figure out today's opponent (for the team select) and today's active/probable
+    // pitcher (for the pitching tab), so the app surfaces what's relevant mid-game.
+    const schedCtx = findScheduleContext(sched, selectedTeamId);
+    state.currentOpponentId = schedCtx.opponentId;
+    state.currentPitcherId = null;
+    if (schedCtx.todaysGamePk) {
+      try {
+        const live = await mlbLive(schedCtx.todaysGamePk);
+        if (live.gameData?.status?.abstractGameState === 'Preview') {
+          const homeId = live.gameData?.teams?.home?.id;
+          state.currentPitcherId = (homeId === selectedTeamId
+            ? live.gameData?.probablePitchers?.home?.id
+            : live.gameData?.probablePitchers?.away?.id) || null;
+        } else {
+          state.currentPitcherId = live.liveData?.plays?.currentPlay?.matchup?.pitcher?.id || null;
+        }
+      } catch { /* live feed unavailable — fall back to normal IP-sorted list */ }
+    }
+    populateTeamSelect();
 
     state.teamHit  = th.stats?.[0]?.splits || [];
     state.teamPitch = tp.stats?.[0]?.splits || [];
@@ -1171,9 +1233,13 @@ Chart.register({
 function renderPitcherSelect() {
   const pitchers = [...(state.natsPitchers||[])]
     .sort((a,b)=>parseFloat(b.stat?.inningsPitched||0)-parseFloat(a.stat?.inningsPitched||0));
+  if (state.currentPitcherId) {
+    const idx = pitchers.findIndex(p => p.player.id === state.currentPitcherId);
+    if (idx > 0) pitchers.unshift(pitchers.splice(idx, 1)[0]);
+  }
   const sel = el('pitcher-select');
   sel.innerHTML = '<option value="0">— Select Pitcher —</option>' +
-    pitchers.map(p=>`<option value="${p.player.id}">${esc(p.player.fullName)}</option>`).join('');
+    pitchers.map(p=>`<option value="${p.player.id}">${p.player.id===state.currentPitcherId?'⚾ ':''}${esc(p.player.fullName)}</option>`).join('');
   // Restore selection if pitcher still present, otherwise reset
   if (state.pitcherId && pitchers.some(p=>p.player.id===state.pitcherId)) {
     sel.value = String(state.pitcherId);
@@ -1181,7 +1247,7 @@ function renderPitcherSelect() {
     state.pitcherId = null; state.pitchGamePk = null;
     const gs = el('game-select');
     gs.innerHTML = '<option value="0">— Select Game —</option>'; gs.disabled = true;
-    show('pitch-placeholder'); hide('pitch-content'); hide('pitch-loading');
+    show('pitch-placeholder'); hide('pitch-content'); hide('pitch-loading'); hide('pitch-inning-toggle');
     el('pitch-placeholder').textContent = 'Select a pitcher above to view pitch locations';
     if (state.pitchChart) { state.pitchChart.destroy(); state.pitchChart = null; }
   }
@@ -1192,12 +1258,12 @@ async function setPitcher(id, hintGamePk = 0) {
     state.pitcherId = null; state.pitchGamePk = null;
     const gs = el('game-select');
     gs.innerHTML = '<option value="0">— Select Game —</option>'; gs.disabled = true;
-    show('pitch-placeholder'); hide('pitch-content'); hide('pitch-loading');
+    show('pitch-placeholder'); hide('pitch-content'); hide('pitch-loading'); hide('pitch-inning-toggle');
     el('pitch-placeholder').textContent = 'Select a pitcher above to view pitch locations';
     return;
   }
   state.pitcherId = id;
-  show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content');
+  show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content'); hide('pitch-inning-toggle');
   const gs = el('game-select');
   gs.innerHTML = '<option value="0">Loading…</option>'; gs.disabled = true;
   try {
@@ -1237,7 +1303,7 @@ async function setPitcher(id, hintGamePk = 0) {
 async function setPitcherGame(gamePk) {
   if (!gamePk || !state.pitcherId) return;
   state.pitchGamePk = gamePk;
-  show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content');
+  show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content'); hide('pitch-inning-toggle');
   try {
     const data = await mlb(`/game/${gamePk}/playByPlay`);
     const pitches = extractPitches(data, state.pitcherId);
@@ -1247,8 +1313,13 @@ async function setPitcherGame(gamePk) {
       el('pitch-placeholder').textContent = 'No pitch coordinate data found for this game.';
     } else {
       state.pitchData = pitches;
+      state.maxInning = pitches.reduce((m,p)=>Math.max(m, p.inning||0), 0);
       state.pitchTypeFilter = null;
       state.pitchOutcomeFilter = null;
+      state.pitchInningFilter = false;
+      el('inning-toggle-btn').textContent = state.maxInning ? `${ordinal(state.maxInning)} Inning` : 'Current Inning';
+      document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===0));
+      show('pitch-inning-toggle');
       renderPitchChart(pitches);
       show('pitch-content');
       saveState();
@@ -1282,6 +1353,7 @@ function extractPitches(playByPlay, pitcherId) {
       else outcome='ball';
       pitches.push({
         px, pz,
+        inning: play.about?.inning,
         velo: pd?.startSpeed,
         type: ev.details?.type?.code||'UN',
         typeLabel: ev.details?.type?.description||'Unknown',
@@ -1406,8 +1478,15 @@ function getFilteredPitches() {
   return state.pitchData.filter(p => {
     const typeOk    = !state.pitchTypeFilter    || state.pitchTypeFilter.has(p.type);
     const outcomeOk = !state.pitchOutcomeFilter || state.pitchOutcomeFilter.has(p.outcome);
-    return typeOk && outcomeOk;
+    const inningOk  = !state.pitchInningFilter  || p.inning === state.maxInning;
+    return typeOk && outcomeOk && inningOk;
   });
+}
+
+function setInningFilter(isCurrent) {
+  state.pitchInningFilter = isCurrent;
+  document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===(isCurrent?1:0)));
+  renderPitchChart(getFilteredPitches());
 }
 
 function togglePitchType(type) {
@@ -1494,7 +1573,11 @@ function updateLogoTitle() {
 }
 
 function populateTeamSelect() {
-  el('team-select').innerHTML = MLB_TEAMS.map(t =>
+  const opp = state.currentOpponentId ? MLB_TEAMS.find(t => t.id === state.currentOpponentId) : null;
+  const ordered = opp
+    ? [MLB_TEAMS[0], opp, ...MLB_TEAMS.slice(1).filter(t => t.id !== opp.id)]
+    : MLB_TEAMS;
+  el('team-select').innerHTML = ordered.map(t =>
     `<option value="${t.id}"${t.id === selectedTeamId ? ' selected' : ''}>${esc(t.name)}</option>`
   ).join('');
 }

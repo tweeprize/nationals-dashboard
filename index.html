@@ -549,25 +549,27 @@ const PLAYER_PITCH_STATS = [
 ];
 
 // ─── PITCH CONSTANTS ─────────────────────────────────────────────────────────
-// Maps Chart.js pointStyle names to unicode for the HTML legend
-// rect=■ (sharp square)  rectRounded=□ (rounded square, visually distinct)
-const STYLE_GLYPH = {circle:'●', star:'★', triangle:'▲', rectRot:'◆', rect:'■', rectRounded:'□', crossRot:'✕'};
+// Maps pointStyle names to unicode for the HTML legend. circle/rect/rectRot/triangle
+// are native Chart.js fillable point styles; pentagon/hexagon/star are drawn by the
+// customPointShapes plugin below since Chart.js has no more distinct fillable natives
+// (its 'star'/'crossRot' styles are outline-only and can't show the outcome color fill).
+const STYLE_GLYPH = {circle:'●', triangle:'▲', rectRot:'◆', rect:'■', pentagon:'⬟', hexagon:'⬢', star:'★'};
+const CUSTOM_SHAPES = new Set(['pentagon', 'hexagon', 'star']);
 
-// All common pitches use filled shapes; crossRot (×) reserved for rare types
 const PITCH_TYPES = {
-  FF:{label:'4-Seam FB',   style:'circle'},       // ● filled
-  FA:{label:'Fastball',    style:'circle'},        // ● filled
-  SI:{label:'Sinker',      style:'rectRounded'},   // □ filled rounded square
-  FC:{label:'Cutter',      style:'star'},          // ★ filled
-  SL:{label:'Slider',      style:'triangle'},      // △ filled
-  ST:{label:'Sweeper',     style:'triangle'},      // △ filled
-  CU:{label:'Curveball',   style:'rectRot'},       // ◆ filled diamond
-  KC:{label:'Knuckle-CB',  style:'rectRot'},       // ◆ filled diamond
-  CS:{label:'Slow Curve',  style:'rectRot'},       // ◆ filled diamond
-  CH:{label:'Changeup',    style:'rect'},          // ■ filled sharp square
-  SV:{label:'Slurve',      style:'rect'},          // ■ filled sharp square
-  FS:{label:'Splitter',    style:'crossRot'},      // ✕ outlined (rare)
-  KN:{label:'Knuckleball', style:'crossRot'},      // ✕ outlined (rare)
+  FF:{label:'4-Seam FB',   style:'circle'},    // ● filled circle
+  FA:{label:'Fastball',    style:'circle'},    // ● filled circle
+  SI:{label:'Sinker',      style:'pentagon'},  // ⬟ filled pentagon
+  FC:{label:'Cutter',      style:'hexagon'},   // ⬢ filled hexagon
+  SL:{label:'Slider',      style:'triangle'},  // ▲ filled triangle
+  ST:{label:'Sweeper',     style:'triangle'},  // ▲ filled triangle
+  CU:{label:'Curveball',   style:'rectRot'},   // ◆ filled diamond
+  KC:{label:'Knuckle-CB',  style:'rectRot'},   // ◆ filled diamond
+  CS:{label:'Slow Curve',  style:'rectRot'},   // ◆ filled diamond
+  CH:{label:'Changeup',    style:'rect'},      // ■ filled square
+  SV:{label:'Slurve',      style:'rect'},      // ■ filled square
+  FS:{label:'Splitter',    style:'star'},      // ★ filled star
+  KN:{label:'Knuckleball', style:'star'},      // ★ filled star
 };
 const OUTCOMES = {
   home_run:       {label:'Home Run',      color:'#ef4444'},
@@ -1192,6 +1194,56 @@ Chart.register({
   }
 });
 
+// ─── CUSTOM POINT SHAPE PLUGIN ───────────────────────────────────────────────
+// Chart.js only has 4 distinct *fillable* built-in point styles (circle, rect,
+// rectRot, triangle) — not enough for every pitch-type family, and its remaining
+// styles (star, crossRot, etc.) are outline-only so the outcome color never shows.
+// Datasets flagged with _customShape get drawn here instead of by Chart.js natively
+// (their real pointStyle/backgroundColor are set to transparent so nothing shows twice).
+function regularPolygonPath(ctx, cx, cy, r, sides, rotation) {
+  for (let i = 0; i < sides; i++) {
+    const a = rotation + i * 2 * Math.PI / sides;
+    const px = cx + r * Math.cos(a), py = cy + r * Math.sin(a);
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+function starPath(ctx, cx, cy, rOuter, rInner, points, rotation) {
+  for (let i = 0; i < points * 2; i++) {
+    const r = i % 2 === 0 ? rOuter : rInner;
+    const a = rotation + i * Math.PI / points;
+    const px = cx + r * Math.cos(a), py = cy + r * Math.sin(a);
+    i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+}
+Chart.register({
+  id: 'customPointShapes',
+  afterDatasetsDraw(chart) {
+    if (chart !== state.pitchChart) return;
+    const {ctx} = chart;
+    chart.data.datasets.forEach((ds, di) => {
+      if (!ds._customShape) return;
+      const meta = chart.getDatasetMeta(di);
+      meta.data.forEach((point, i) => {
+        const {x: cx, y: cy} = point.getProps(['x', 'y'], true);
+        const r = point.options?.radius || 8;
+        ctx.save();
+        ctx.beginPath();
+        if (ds._customShape === 'pentagon') regularPolygonPath(ctx, cx, cy, r, 5, -Math.PI / 2);
+        else if (ds._customShape === 'hexagon') regularPolygonPath(ctx, cx, cy, r, 6, 0);
+        else if (ds._customShape === 'star') starPath(ctx, cx, cy, r, r * 0.45, 5, -Math.PI / 2);
+        ctx.fillStyle = ds._pointColors[i] || '#888';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+        ctx.stroke();
+        ctx.restore();
+      });
+    });
+  }
+});
+
 // ─── PITCH BREAK VECTOR PLUGIN ───────────────────────────────────────────────
 // Uses pfxX / pfxZ (feet of movement vs gravity-only path, from pitchData.coordinates).
 // Drawn in afterDraw so arrows appear on top of symbols.
@@ -1202,8 +1254,8 @@ Chart.register({
     if (chart !== state.pitchChart) return;
     const {ctx, scales:{x, y}} = chart;
     if (!x || !y || !chart._pitchPoints) return;
-    // pfxX/pfxZ are in inches; /12 converts to feet, ×0.55 amplifies for visibility
-    const SCALE = 0.55 / 12, HEAD = 6;
+    // pfxX/pfxZ are in inches; /12 converts to feet, ×0.275 amplifies for visibility
+    const SCALE = 0.275 / 12, HEAD = 6;
     ctx.save();
     ctx.strokeStyle = 'rgba(255,255,255,0.82)';
     ctx.fillStyle   = 'rgba(255,255,255,0.82)';
@@ -1300,7 +1352,7 @@ async function setPitcher(id, hintGamePk = 0) {
   }
 }
 
-async function setPitcherGame(gamePk) {
+async function setPitcherGame(gamePk, preserveFilters) {
   if (!gamePk || !state.pitcherId) return;
   state.pitchGamePk = gamePk;
   show('pitch-loading'); hide('pitch-placeholder'); hide('pitch-content'); hide('pitch-inning-toggle');
@@ -1314,13 +1366,15 @@ async function setPitcherGame(gamePk) {
     } else {
       state.pitchData = pitches;
       state.maxInning = pitches.reduce((m,p)=>Math.max(m, p.inning||0), 0);
-      state.pitchTypeFilter = null;
-      state.pitchOutcomeFilter = null;
-      state.pitchInningFilter = false;
+      if (!preserveFilters) {
+        state.pitchTypeFilter = null;
+        state.pitchOutcomeFilter = null;
+        state.pitchInningFilter = false;
+      }
       el('inning-toggle-btn').textContent = state.maxInning ? `${ordinal(state.maxInning)} Inning` : 'Current Inning';
-      document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===0));
+      document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===(state.pitchInningFilter?1:0)));
       show('pitch-inning-toggle');
-      renderPitchChart(pitches);
+      renderPitchChart(getFilteredPitches());
       show('pitch-content');
       saveState();
     }
@@ -1360,8 +1414,11 @@ function extractPitches(playByPlay, pitcherId) {
         outcome,
         szTop: pd?.strikeZoneTop,
         szBottom: pd?.strikeZoneBottom,
-        pfxX: pd?.coordinates?.pfxX,
-        pfxZ: pd?.coordinates?.pfxZ,
+        // MLB Stats API pfxX/pfxZ use the legacy PITCHf/x convention (movement measured
+        // from y=40ft to the plate), which is ~half the release-to-plate break Statcast
+        // publicly reports (e.g. Baseball Savant "Horizontal Break"). ×2 to match that.
+        pfxX: pd?.coordinates?.pfxX != null ? pd.coordinates.pfxX * 2 : null,
+        pfxZ: pd?.coordinates?.pfxZ != null ? pd.coordinates.pfxZ * 2 : null,
       });
     }
   }
@@ -1380,25 +1437,33 @@ function renderPitchChart(pitches) {
 
   const datasets = Object.entries(typeGroups).map(([type,pts])=>{
     const cfg = PITCH_TYPES[type]||{label:type, style:'circle'};
+    const custom = CUSTOM_SHAPES.has(cfg.style);
+    const pointColors = pts.map(p=>OUTCOMES[p.outcome]?.color||'#888');
     return {
       label: cfg.label,
       data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome, pfxX:p.pfxX, pfxZ:p.pfxZ})),
-      pointStyle: cfg.style,
+      // custom-shape datasets render invisibly here; customPointShapes plugin draws them instead
+      pointStyle: custom ? 'circle' : cfg.style,
       pointRadius: 8,
       pointHoverRadius: 11,
-      backgroundColor: pts.map(p=>OUTCOMES[p.outcome]?.color||'#888'),
-      borderColor: 'rgba(255,255,255,0.5)',
+      backgroundColor: custom ? 'transparent' : pointColors,
+      borderColor: custom ? 'transparent' : 'rgba(255,255,255,0.5)',
       borderWidth: 1.5,
       showLine: false,
+      _customShape: custom ? cfg.style : null,
+      _pointColors: pointColors,
     };
   });
 
-  // Outcome chips — always built from full pitch data so all outcomes stay visible
+  // Outcome/type chip counts respect the inning filter but stay independent of the
+  // type/outcome filters themselves, so switching filters doesn't hide other options.
+  const inningPitches = state.pitchData.filter(p => !state.pitchInningFilter || p.inning === state.maxInning);
+
   const allCounts = {};
-  state.pitchData.forEach(p=>{ allCounts[p.outcome]=(allCounts[p.outcome]||0)+1; });
+  inningPitches.forEach(p=>{ allCounts[p.outcome]=(allCounts[p.outcome]||0)+1; });
   const ocFiltered = state.pitchOutcomeFilter !== null;
   el('pitch-outcome-legend').innerHTML =
-    `<button class="filter-all${ocFiltered?'':' f-active'}" onclick="resetOutcomeFilter()">All <strong>${state.pitchData.length}</strong></button>` +
+    `<button class="filter-all${ocFiltered?'':' f-active'}" onclick="resetOutcomeFilter()">All <strong>${inningPitches.length}</strong></button>` +
     Object.entries(OUTCOMES)
       .filter(([k])=>allCounts[k])
       .map(([k,v])=>{
@@ -1459,12 +1524,12 @@ function renderPitchChart(pitches) {
   }));
   state.pitchChart.update();
 
-  // HTML pitch-type legend — built from full pitch data so all types stay visible
+  // HTML pitch-type legend — built from inning-filtered pitch data so all types stay visible
   const allTypeGroups = {};
-  state.pitchData.forEach(p=>{ if(!allTypeGroups[p.type]) allTypeGroups[p.type]=[]; allTypeGroups[p.type].push(p); });
+  inningPitches.forEach(p=>{ if(!allTypeGroups[p.type]) allTypeGroups[p.type]=[]; allTypeGroups[p.type].push(p); });
   const typeFiltered = state.pitchTypeFilter !== null;
   el('pitch-type-legend').innerHTML =
-    `<button class="filter-all${typeFiltered?'':' f-active'}" onclick="resetTypeFilter()">All <strong>${state.pitchData.length}</strong></button>` +
+    `<button class="filter-all${typeFiltered?'':' f-active'}" onclick="resetTypeFilter()">All <strong>${inningPitches.length}</strong></button>` +
     Object.entries(allTypeGroups).map(([type]) => {
       const cfg = PITCH_TYPES[type] || {label:type, style:'circle'};
       const glyph = STYLE_GLYPH[cfg.style] || '●';
@@ -1526,7 +1591,7 @@ async function refreshData() {
   btn.classList.add('spinning');
   try {
     if (state.tab === 'pitching' && state.pitchGamePk) {
-      await setPitcherGame(state.pitchGamePk);
+      await setPitcherGame(state.pitchGamePk, true);
     } else if (state.tab === 'pitching' && state.pitcherId) {
       await setPitcher(state.pitcherId);
     } else {

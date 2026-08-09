@@ -56,6 +56,14 @@ without reloading the whole page:
 **Persistence** — Selected team, tab, and (on the pitching tab) selected pitcher
 and game are saved to `localStorage` and restored on next load.
 
+## Keeping this file current
+
+There is no other spec for this app — this file is the only record of intended
+behavior beyond the code itself. Whenever a change alters, adds, or removes
+user-facing behavior described above, update the relevant section in the same
+commit as the code change. If a change is purely internal (refactor, styling,
+no behavior change), this file doesn't need touching.
+
 ## Testing
 
 No automated tests exist yet. To verify a change actually works, drive a real

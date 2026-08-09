@@ -594,7 +594,7 @@ let state = {
   chart:null, tab:'team',
   pitcherId:null, pitcherGames:[], pitchGamePk:null, pitchChart:null,
   pitchData:[], pitchTypeFilter:null, pitchOutcomeFilter:null, pitchInningFilter:false,
-  currentOpponentId:null, currentPitcherId:null,
+  currentOpponentId:null, currentPitcherId:null, todaysGamePk:null,
 };
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
@@ -653,6 +653,19 @@ async function mlbLive(gamePk) {
   const r = await fetch(`https://statsapi.mlb.com/api/v1.1/game/${gamePk}/feed/live`);
   if (!r.ok) throw new Error('HTTP ' + r.status);
   return r.json();
+}
+
+// Looks up who's currently pitching in a given game (probable starter if the
+// game hasn't started yet, otherwise whoever threw the last/current pitch).
+async function computeCurrentPitcherId(gamePk) {
+  const live = await mlbLive(gamePk);
+  if (live.gameData?.status?.abstractGameState === 'Preview') {
+    const homeId = live.gameData?.teams?.home?.id;
+    return (homeId === selectedTeamId
+      ? live.gameData?.probablePitchers?.home?.id
+      : live.gameData?.probablePitchers?.away?.id) || null;
+  }
+  return live.liveData?.plays?.currentPlay?.matchup?.pitcher?.id || null;
 }
 
 function todayStr() {
@@ -717,19 +730,11 @@ async function loadData(opts = {}) {
     // pitcher (for the pitching tab), so the app surfaces what's relevant mid-game.
     const schedCtx = findScheduleContext(sched, selectedTeamId);
     state.currentOpponentId = schedCtx.opponentId;
+    state.todaysGamePk = schedCtx.todaysGamePk;
     state.currentPitcherId = null;
-    if (schedCtx.todaysGamePk) {
-      try {
-        const live = await mlbLive(schedCtx.todaysGamePk);
-        if (live.gameData?.status?.abstractGameState === 'Preview') {
-          const homeId = live.gameData?.teams?.home?.id;
-          state.currentPitcherId = (homeId === selectedTeamId
-            ? live.gameData?.probablePitchers?.home?.id
-            : live.gameData?.probablePitchers?.away?.id) || null;
-        } else {
-          state.currentPitcherId = live.liveData?.plays?.currentPlay?.matchup?.pitcher?.id || null;
-        }
-      } catch { /* live feed unavailable — fall back to normal IP-sorted list */ }
+    if (state.todaysGamePk) {
+      try { state.currentPitcherId = await computeCurrentPitcherId(state.todaysGamePk); }
+      catch { /* live feed unavailable — fall back to normal IP-sorted list */ }
     }
     populateTeamSelect();
 
@@ -1586,13 +1591,24 @@ function resetTypeFilter()    { state.pitchTypeFilter    = null; renderPitchChar
 function resetOutcomeFilter() { state.pitchOutcomeFilter = null; renderPitchChart(getFilteredPitches()); }
 
 // ─── REFRESH ─────────────────────────────────────────────────────────────────
+// Re-checks who's currently pitching without refetching season stats, so the
+// ⚾ marker stays current even when refreshData() takes the lightweight path.
+async function refreshCurrentPitcher() {
+  if (!state.todaysGamePk) return;
+  try { state.currentPitcherId = await computeCurrentPitcherId(state.todaysGamePk); }
+  catch { /* live feed unavailable */ }
+  renderPitcherSelect();
+}
+
 async function refreshData() {
   const btn = el('refresh-btn');
   btn.classList.add('spinning');
   try {
     if (state.tab === 'pitching' && state.pitchGamePk) {
+      await refreshCurrentPitcher();
       await setPitcherGame(state.pitchGamePk, true);
     } else if (state.tab === 'pitching' && state.pitcherId) {
+      await refreshCurrentPitcher();
       await setPitcher(state.pitcherId);
     } else {
       await loadData({ tab: state.tab, window: state.window,

@@ -537,7 +537,7 @@ const PLAYER_HIT_STATS = [
   {key:'obp',         label:'OBP',  higher:true,  fmt:v=>(+v).toFixed(3), mobileHide:true},
   {key:'slg',         label:'SLG',  higher:true,  fmt:v=>(+v).toFixed(3), mobileHide:true},
   {key:'homeRuns',    label:'HR',   higher:true,  fmt:fmtCount,           countStat:true},
-  {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true},
+  {key:'stolenBases', label:'SB',   higher:true,  fmt:fmtCount,           countStat:true, mobileHide:true, attemptsKey:'caughtStealing'},
 ];
 const PLAYER_PITCH_STATS = [
   {key:'era',               label:'ERA',  higher:false, fmt:v=>(+v).toFixed(2)},
@@ -895,6 +895,10 @@ function renderPlayerTable() {
   const stats     = isBatting ? PLAYER_HIT_STATS    : PLAYER_PITCH_STATS;
   const teamData  = isBatting ? state.teamHit        : state.teamPitch;
 
+  // stats with an attemptsKey (e.g. SB/CS) display as "made/attempted" —
+  // sorting and the vs-average color still use the raw s.key value alone.
+  const attempts = (p, s) => (parseFloat(p.stat?.[s.key])||0) + (parseFloat(p.stat?.[s.attemptsKey])||0);
+
   // rate stats: average the team-level rate (valid — team rate = player-level rate)
   // count stats: average across the player pool (team totals would dwarf any individual)
   const avgs = {};
@@ -902,6 +906,7 @@ function renderPlayerTable() {
     avgs[s.key] = s.countStat
       ? mean(players.map(p => p.stat?.[s.key]))
       : leagueAvg(teamData, s.key);
+    if (s.attemptsKey) avgs[s.key+'_attempts'] = mean(players.map(p => attempts(p, s)));
   });
 
   // sort players
@@ -917,12 +922,12 @@ function renderPlayerTable() {
     ? `${p.stat?.plateAppearances||0} PA`
     : `${p.stat?.inningsPitched||0} IP`;
 
-  const pill = (raw, avg, higher, fmt) => {
+  const pill = (raw, avg, higher, fmt, display) => {
     const n = parseFloat(raw);
     if (isNaN(n)||n===0) return '<span style="color:var(--muted)">—</span>';
     const better = higher ? n>=avg : n<=avg;
     const diff   = avg>0 ? Math.abs(((n-avg)/avg)*100).toFixed(1) : '0.0';
-    return `<span class="${better?'val-up':'val-dn'}">${fmt(n)}<span class="val-pct">${better?'▲':'▼'} ${diff}%</span></span>`;
+    return `<span class="${better?'val-up':'val-dn'}">${display ?? fmt(n)}<span class="val-pct">${better?'▲':'▼'} ${diff}%</span></span>`;
   };
 
   const thead = document.querySelector('#player-table thead');
@@ -935,7 +940,11 @@ function renderPlayerTable() {
     </tr>
     <tr class="avg-row">
       <td>League Avg</td>
-      ${stats.map(s=>`<td class="${s.mobileHide?'mobile-hide':''}">${avgs[s.key]?s.fmt(avgs[s.key]):'—'}</td>`).join('')}
+      ${stats.map(s=>{
+        if (!avgs[s.key]) return `<td class="${s.mobileHide?'mobile-hide':''}">—</td>`;
+        const text = s.attemptsKey ? `${s.fmt(avgs[s.key])}/${s.fmt(avgs[s.key+'_attempts'])}` : s.fmt(avgs[s.key]);
+        return `<td class="${s.mobileHide?'mobile-hide':''}">${text}</td>`;
+      }).join('')}
     </tr>`;
 
   tbody.innerHTML = sorted.map(p=>`
@@ -944,7 +953,10 @@ function renderPlayerTable() {
         <div class="player-name">${esc(p.player?.fullName)}</div>
         <div class="player-sub">${esc(sub(p))}</div>
       </td>
-      ${stats.map(s=>`<td class="${s.mobileHide?'mobile-hide':''}">${pill(p.stat?.[s.key], avgs[s.key], s.higher, s.fmt)}</td>`).join('')}
+      ${stats.map(s=>{
+        const display = s.attemptsKey ? `${s.fmt(parseFloat(p.stat?.[s.key])||0)}/${s.fmt(attempts(p, s))}` : undefined;
+        return `<td class="${s.mobileHide?'mobile-hide':''}">${pill(p.stat?.[s.key], avgs[s.key], s.higher, s.fmt, display)}</td>`;
+      }).join('')}
     </tr>`).join('') || `<tr><td colspan="${stats.length+1}" style="text-align:center;padding:30px;color:var(--muted)">No qualified players</td></tr>`;
 }
 
@@ -1419,6 +1431,7 @@ function extractPitches(playByPlay, pitcherId) {
         else                                                     outcome='in_play_out';
       }
       else outcome='ball';
+      const review = ev.details?.hasReview ? ev.reviewDetails : null;
       pitches.push({
         px, pz,
         inning: play.about?.inning,
@@ -1428,6 +1441,12 @@ function extractPitches(playByPlay, pitcherId) {
         outcome,
         szTop: pd?.strikeZoneTop,
         szBottom: pd?.strikeZoneBottom,
+        // ABS challenge, when present: who challenged, the original call, and the ruling
+        review: review ? {
+          overturned: !!review.isOverturned,
+          player: review.player?.fullName || 'Unknown',
+          originalCall: ev.details?.call?.description || '',
+        } : null,
         // MLB Stats API pfxX/pfxZ use the legacy PITCHf/x convention (movement measured
         // from y=40ft to the plate), which is ~half the release-to-plate break Statcast
         // publicly reports (e.g. Baseball Savant "Horizontal Break"). ×2 to match that.
@@ -1455,7 +1474,7 @@ function renderPitchChart(pitches) {
     const pointColors = pts.map(p=>OUTCOMES[p.outcome]?.color||'#888');
     return {
       label: cfg.label,
-      data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome, pfxX:p.pfxX, pfxZ:p.pfxZ})),
+      data: pts.map(p=>({x:p.px, y:p.pz, velo:p.velo, typeLabel:p.typeLabel, outcome:p.outcome, pfxX:p.pfxX, pfxZ:p.pfxZ, review:p.review})),
       // custom-shape datasets render invisibly here; customPointShapes plugin draws them instead
       pointStyle: custom ? 'circle' : cfg.style,
       pointRadius: 8,
@@ -1468,6 +1487,26 @@ function renderPitchChart(pitches) {
       _pointColors: pointColors,
     };
   });
+
+  // ABS challenge halo: a non-interactive overlay ring (not a new color/shape,
+  // to avoid a 3rd visual channel) around any pitch that was challenged.
+  // pointHitRadius:0 keeps hover/tooltip on the real point underneath.
+  const reviewedPts = pitches.filter(p => p.review);
+  if (reviewedPts.length) {
+    datasets.push({
+      label: 'ABS Challenge',
+      data: reviewedPts.map(p=>({x:p.px, y:p.pz, review:p.review})),
+      pointStyle: 'circle',
+      pointRadius: 13,
+      pointHoverRadius: 13,
+      pointHitRadius: 0,
+      backgroundColor: 'transparent',
+      borderColor: tc.accent || '#D4B44A',
+      borderWidth: 2.5,
+      showLine: false,
+      _isChallengeRing: true,
+    });
+  }
 
   // Outcome/type chip counts respect the inning filter but stay independent of the
   // type/outcome filters themselves, so switching filters doesn't hide other options.
@@ -1510,6 +1549,7 @@ function renderPitchChart(pitches) {
       plugins: {
         legend: { display: false },
         tooltip: {
+          filter: item => !item.dataset._isChallengeRing,
           callbacks: {
             title: ()=>'',
             label: ctx=>{
@@ -1517,7 +1557,9 @@ function renderPitchChart(pitches) {
               const vel = pt.velo ? `${Math.round(pt.velo)} mph` : '';
               const hb  = pt.pfxX != null ? `  H ${pt.pfxX>0?'+':''}${pt.pfxX.toFixed(1)}"` : '';
               const vb  = pt.pfxZ != null ? `  V ${pt.pfxZ>0?'+':''}${pt.pfxZ.toFixed(1)}"` : '';
-              return `${vel}  ${pt.typeLabel} — ${OUTCOMES[pt.outcome]?.label||pt.outcome}${hb}${vb}`;
+              const lines = [`${vel}  ${pt.typeLabel} — ${OUTCOMES[pt.outcome]?.label||pt.outcome}${hb}${vb}`];
+              if (pt.review) lines.push(`⚡ ${pt.review.player} challenged: ${pt.review.originalCall} → ${pt.review.overturned ? 'Overturned' : 'Upheld'}`);
+              return lines;
             }
           },
           backgroundColor: darken(tc.dark||'#011E62',0.4),

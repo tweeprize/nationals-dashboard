@@ -27,7 +27,15 @@ team highlighted, gold dashed line = league average.
 
 **Players tab** — Sortable table of the selected team's individual batters/pitchers
 for the current season/window. Minimum 20 PA (batting) or 5 IP (pitching) to
-appear, so call-ups with token appearances don't clutter it.
+appear, so call-ups with token appearances don't clutter it. Columns are driven
+by `PLAYER_HIT_STATS`/`PLAYER_PITCH_STATS` (index.html) — adding a stat is a
+one-line addition as long as the MLB Stats API returns that field on the
+hitting/pitching split (batting currently: OPS, AVG, OBP, SLG, HR, SB). The SB
+column displays as "made/attempted" (e.g. `17/19`) via a stat config's
+`attemptsKey: 'caughtStealing'` — sorting and the vs-league-average color still
+key off the raw SB number alone, not the attempt total. That `attemptsKey`
+mechanism is generic (see `renderPlayerTable()`'s `attempts()` helper), so any
+future made/attempted-style stat can reuse it the same way.
 
 **Pitching tab — pitch location chart**:
 - Pick a pitcher (dropdown, sorted by innings pitched), then a specific game
@@ -51,6 +59,19 @@ appear, so call-ups with token appearances don't clutter it.
   this season (see Players tab), but always includes the current pitcher
   regardless — otherwise a recent trade/call-up who's actively pitching today
   wouldn't have an `<option>` to be marked at all, not just a missing ⚾.
+- **ABS challenge rings**: a pitch that was challenged under the 2026
+  Automated Ball-Strike challenge system gets a gold ring around its point
+  (a non-interactive overlay dataset, `pointHitRadius:0`, flagged
+  `_isChallengeRing` so the customPointShapes plugin and the tooltip filter
+  both skip it) instead of a new color/shape, since the chart already uses
+  color for outcome and shape for pitch type. Hovering the real point
+  underneath shows who challenged and the ruling as a second tooltip line.
+  Source: `ev.details.hasReview` / `ev.reviewDetails` on each pitch event from
+  `playByPlay` — same endpoint already used for the chart, no extra fetch.
+  A season-wide challenge stat (e.g. team challenge success rate) would be a
+  much heavier feature — MLB's stats endpoints don't aggregate this, so it'd
+  require pulling full play-by-play for every game played, not just the one
+  selected — see git history / conversation context before attempting that.
 
 **Refresh button (↺, header)** — Re-pulls whatever the current view needs
 without reloading the whole page:

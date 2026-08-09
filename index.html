@@ -655,17 +655,21 @@ async function mlbLive(gamePk) {
   return r.json();
 }
 
-// Looks up who's currently pitching in a given game (probable starter if the
-// game hasn't started yet, otherwise whoever threw the last/current pitch).
+// Looks up who's currently pitching for the SELECTED team in a given game
+// (probable starter if the game hasn't started yet, otherwise their most
+// recently-used pitcher). Deliberately not currentPlay.matchup.pitcher —
+// that's whoever is on the mound *right now*, which is only ever one of the
+// two teams (whichever is on defense this instant), so it goes stale/wrong
+// for the other team the moment they're batting instead of pitching.
 async function computeCurrentPitcherId(gamePk) {
   const live = await mlbLive(gamePk);
+  const homeId = live.gameData?.teams?.home?.id;
+  const side = homeId === selectedTeamId ? 'home' : 'away';
   if (live.gameData?.status?.abstractGameState === 'Preview') {
-    const homeId = live.gameData?.teams?.home?.id;
-    return (homeId === selectedTeamId
-      ? live.gameData?.probablePitchers?.home?.id
-      : live.gameData?.probablePitchers?.away?.id) || null;
+    return live.gameData?.probablePitchers?.[side]?.id || null;
   }
-  return live.liveData?.plays?.currentPlay?.matchup?.pitcher?.id || null;
+  const pitchers = live.liveData?.boxscore?.teams?.[side]?.pitchers || [];
+  return pitchers[pitchers.length - 1] || null;
 }
 
 function todayStr() {
@@ -741,7 +745,12 @@ async function loadData(opts = {}) {
     state.teamHit  = th.stats?.[0]?.splits || [];
     state.teamPitch = tp.stats?.[0]?.splits || [];
     state.natsHitters  = (nh.stats?.[0]?.splits || []).filter(s => (s.stat?.plateAppearances || 0) >= 20);
-    state.natsPitchers = (np.stats?.[0]?.splits || []).filter(s => parseFloat(s.stat?.inningsPitched || '0') >= 5);
+    // Keep the current pitcher even below the IP floor — a trade-deadline
+    // pickup or debut can be actively pitching today with only a couple of
+    // innings logged for this team so far, and excluding them here means
+    // there's no <option> for them at all, not just a missing marker.
+    state.natsPitchers = (np.stats?.[0]?.splits || []).filter(s =>
+      parseFloat(s.stat?.inningsPitched || '0') >= 5 || s.player.id === state.currentPitcherId);
 
     // merge fielding errors into hitting splits
     const teamFieldingMap = {};

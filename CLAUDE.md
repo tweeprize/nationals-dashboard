@@ -36,11 +36,21 @@ appear, so call-ups with token appearances don't clutter it.
   legend and type/outcome click-to-filter toggles.
 - A "Current Inning" vs "Full Game" toggle appears only for the pitcher's most
   recent appearance if it's today's game.
-- **Current-pitcher marker (⚾)**: during a live Nationals game, whoever is
-  actively pitching right now is prefixed with ⚾ and moved to the top of the
-  pitcher dropdown. Before first pitch, this is the probable starter; once the
-  game is live, it's whoever the live feed says is on the mound *at the moment
-  the marker was last computed* — see refresh caveat below.
+- **Current-pitcher marker (⚾)**: works for *whichever team is selected*, not
+  just the Nationals — during that team's live game, their own active pitcher
+  is prefixed with ⚾ and moved to the top of the dropdown. Before first pitch,
+  this is the probable starter; once live, it's that team's own most recently
+  used pitcher (`computeCurrentPitcherId()` reads
+  `liveData.boxscore.teams.{home,away}.pitchers`, keyed to whichever side is
+  the selected team — deliberately *not*
+  `liveData.plays.currentPlay.matchup.pitcher`, which is whoever's on the
+  mound *right now* and therefore only ever correct for the team currently on
+  defense; the other team's own pitcher would look unmatched/missing the
+  moment they're batting instead). See refresh caveat below.
+- The pitcher dropdown normally hides anyone under 5 IP for the selected team
+  this season (see Players tab), but always includes the current pitcher
+  regardless — otherwise a recent trade/call-up who's actively pitching today
+  wouldn't have an `<option>` to be marked at all, not just a missing ⚾.
 
 **Refresh button (↺, header)** — Re-pulls whatever the current view needs
 without reloading the whole page:

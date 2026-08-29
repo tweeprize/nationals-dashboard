@@ -59,6 +59,27 @@ future made/attempted-style stat can reuse it the same way.
   this season (see Players tab), but always includes the current pitcher
   regardless — otherwise a recent trade/call-up who's actively pitching today
   wouldn't have an `<option>` to be marked at all, not just a missing ⚾.
+- **Current Batter scope button**: a third button ("vs <name>") joins Full
+  Game / Current Inning — all three are one mutually-exclusive scope
+  (`state.pitchScope`, see `pitchInScope()`), so clicking it filters the chart
+  down to just the pitches of the at-bat in progress, the same way Current
+  Inning filters to the current inning. It only appears when that filter would
+  actually show something: the selected game is today's *live* game, the
+  selected pitcher is the one `liveData.plays.currentPlay.matchup.pitcher`
+  says is actually on the mound right now (`computeCurrentBatter()` returns
+  the batter/pitcher/`atBatIndex` from `currentPlay`; `setPitcherGame()` then
+  checks `cb.pitcherId === state.pitcherId`), and at least one pitch of that
+  at-bat has already landed in `state.pitchData` (via its `atBatIndex`, added
+  in `extractPitches()`). Gating on the pitcher match (unlike the informational
+  ⚾ marker, which is deliberately *not* gated this way) is intentional here:
+  the button filters *this pitcher's own chart*, so it's only ever meaningful
+  when they're the one actually facing that batter — for the other ~half of a
+  live game, the selected team is batting and their own pitcher is on the
+  bench, so the button simply stays hidden. Recomputed on pitcher/game
+  selection and by the refresh button's fast path (both funnel through
+  `setPitcherGame()`); auto-resets to Full Game if the scope was `'batter'`
+  and the button disappears (pitching change, inning ended, refresh landed on
+  a non-live game).
 - **ABS challenge rings**: a pitch that was challenged under the 2026
   Automated Ball-Strike challenge system gets a gold ring around its point
   (a non-interactive overlay dataset, `pointHitRadius:0`, flagged

@@ -436,8 +436,9 @@
         <option value="0">— Select Game —</option>
       </select>
       <div class="win-toggle hidden" id="pitch-inning-toggle">
-        <button class="win-btn active" onclick="setInningFilter(false)">Full Game</button>
-        <button class="win-btn" id="inning-toggle-btn" onclick="setInningFilter(true)">Current Inning</button>
+        <button class="win-btn active" onclick="setPitchScope('full')">Full Game</button>
+        <button class="win-btn" id="inning-toggle-btn" onclick="setPitchScope('inning')">Current Inning</button>
+        <button class="win-btn hidden" id="batter-toggle-btn" onclick="setPitchScope('batter')">Current Batter</button>
       </div>
     </div>
     <div id="pitch-placeholder" class="pitch-placeholder">Select a pitcher above to view pitch locations</div>
@@ -593,8 +594,8 @@ let state = {
   playerGroup:'batting', playerSort:'ops', playerSortDir:1,
   chart:null, tab:'team',
   pitcherId:null, pitcherGames:[], pitchGamePk:null, pitchChart:null,
-  pitchData:[], pitchTypeFilter:null, pitchOutcomeFilter:null, pitchInningFilter:false,
-  currentOpponentId:null, currentPitcherId:null, todaysGamePk:null,
+  pitchData:[], pitchTypeFilter:null, pitchOutcomeFilter:null, pitchScope:'full',
+  currentOpponentId:null, currentPitcherId:null, todaysGamePk:null, currentBatter:null,
 };
 
 // ─── PERSISTENCE ─────────────────────────────────────────────────────────────
@@ -670,6 +671,25 @@ async function computeCurrentPitcherId(gamePk) {
   }
   const pitchers = live.liveData?.boxscore?.teams?.[side]?.pitchers || [];
   return pitchers[pitchers.length - 1] || null;
+}
+
+// Who's at the plate right now in the live game, plus the pitcher facing them
+// and the at-bat index — used to drive the "Current Batter" scope button,
+// which only makes sense (and only gets pitches to filter to) when the
+// selected pitcher is the one actually throwing to this batter. Unlike the ⚾
+// marker there's no "other side" ambiguity in currentPlay.matchup itself
+// (only one player is ever at bat) — the caller does the pitcher-match check
+// so a mismatch can hide the button instead of showing an always-empty filter.
+async function computeCurrentBatter(gamePk) {
+  const live = await mlbLive(gamePk);
+  if (live.gameData?.status?.abstractGameState !== 'Live') return null;
+  const cp = live.liveData?.plays?.currentPlay;
+  if (!cp?.matchup?.batter) return null;
+  return {
+    name: cp.matchup.batter.fullName,
+    pitcherId: cp.matchup.pitcher?.id,
+    atBatIndex: cp.about?.atBatIndex,
+  };
 }
 
 function todayStr() {
@@ -1395,11 +1415,26 @@ async function setPitcherGame(gamePk, preserveFilters) {
       if (!preserveFilters) {
         state.pitchTypeFilter = null;
         state.pitchOutcomeFilter = null;
-        state.pitchInningFilter = false;
+        state.pitchScope = 'full';
       }
       el('inning-toggle-btn').textContent = state.maxInning ? `${ordinal(state.maxInning)} Inning` : 'Current Inning';
-      document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===(state.pitchInningFilter?1:0)));
       show('pitch-inning-toggle');
+
+      // Current-batter scope button: only relevant (and only has pitches to filter
+      // to) when the game is live, the selected pitcher is the one on the mound
+      // right now, and at least one pitch of the in-progress at-bat has landed.
+      state.currentBatter = null;
+      if (gamePk === state.todaysGamePk) {
+        try {
+          const cb = await computeCurrentBatter(gamePk);
+          if (cb && cb.pitcherId === state.pitcherId && pitches.some(p => p.atBatIndex === cb.atBatIndex)) {
+            state.currentBatter = cb;
+          }
+        } catch { /* live feed unavailable */ }
+      }
+      if (!state.currentBatter && state.pitchScope === 'batter') state.pitchScope = 'full';
+      updatePitchScopeButtons();
+
       renderPitchChart(getFilteredPitches());
       show('pitch-content');
       saveState();
@@ -1408,6 +1443,21 @@ async function setPitcherGame(gamePk, preserveFilters) {
     hide('pitch-loading'); show('pitch-placeholder');
     el('pitch-placeholder').textContent = 'Error: ' + e.message;
   }
+}
+
+// Syncs the Full Game / Current Inning / Current Batter button row with
+// state.pitchScope and state.currentBatter (the third button only shows once
+// there's an actual current batter to filter to — see setPitcherGame).
+function updatePitchScopeButtons() {
+  const batterBtn = el('batter-toggle-btn');
+  if (state.currentBatter) {
+    batterBtn.textContent = `vs ${state.currentBatter.name}`;
+    show('batter-toggle-btn');
+  } else {
+    hide('batter-toggle-btn');
+  }
+  const idx = state.pitchScope === 'inning' ? 1 : state.pitchScope === 'batter' ? 2 : 0;
+  document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===idx));
 }
 
 function extractPitches(playByPlay, pitcherId) {
@@ -1435,6 +1485,7 @@ function extractPitches(playByPlay, pitcherId) {
       pitches.push({
         px, pz,
         inning: play.about?.inning,
+        atBatIndex: play.about?.atBatIndex,
         velo: pd?.startSpeed,
         type: ev.details?.type?.code||'UN',
         typeLabel: ev.details?.type?.description||'Unknown',
@@ -1508,9 +1559,10 @@ function renderPitchChart(pitches) {
     });
   }
 
-  // Outcome/type chip counts respect the inning filter but stay independent of the
-  // type/outcome filters themselves, so switching filters doesn't hide other options.
-  const inningPitches = state.pitchData.filter(p => !state.pitchInningFilter || p.inning === state.maxInning);
+  // Outcome/type chip counts respect the scope (inning/batter) filter but stay
+  // independent of the type/outcome filters themselves, so switching those
+  // doesn't hide other options.
+  const inningPitches = state.pitchData.filter(pitchInScope);
 
   const allCounts = {};
   inningPitches.forEach(p=>{ allCounts[p.outcome]=(allCounts[p.outcome]||0)+1; });
@@ -1595,18 +1647,25 @@ function renderPitchChart(pitches) {
 }
 
 // ─── PITCH FILTERS ───────────────────────────────────────────────────────────
+// Full Game / Current Inning / Current Batter are one mutually-exclusive scope,
+// layered underneath the independent type/outcome click-to-filter toggles.
+function pitchInScope(p) {
+  if (state.pitchScope === 'inning') return p.inning === state.maxInning;
+  if (state.pitchScope === 'batter') return state.currentBatter && p.atBatIndex === state.currentBatter.atBatIndex;
+  return true;
+}
+
 function getFilteredPitches() {
   return state.pitchData.filter(p => {
     const typeOk    = !state.pitchTypeFilter    || state.pitchTypeFilter.has(p.type);
     const outcomeOk = !state.pitchOutcomeFilter || state.pitchOutcomeFilter.has(p.outcome);
-    const inningOk  = !state.pitchInningFilter  || p.inning === state.maxInning;
-    return typeOk && outcomeOk && inningOk;
+    return typeOk && outcomeOk && pitchInScope(p);
   });
 }
 
-function setInningFilter(isCurrent) {
-  state.pitchInningFilter = isCurrent;
-  document.querySelectorAll('#pitch-inning-toggle .win-btn').forEach((b,i)=>b.classList.toggle('active', i===(isCurrent?1:0)));
+function setPitchScope(scope) {
+  state.pitchScope = scope;
+  updatePitchScopeButtons();
   renderPitchChart(getFilteredPitches());
 }
 
